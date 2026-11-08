@@ -64,6 +64,7 @@ details>div{padding-top:10px}
 .foot{margin-top:24px;text-align:center}
 .blur{filter:blur(7px);user-select:none}
 a{color:var(--accent)}
+h1,h2,.big,.quote,button,.btn,.names button,.item,.item>span,.kv,.todo p,.sub,.help,.muted,.warn,.good,.err,summary{overflow-wrap:anywhere;min-width:0}
 @media (prefers-reduced-motion:reduce){#toast{transition:none}}
 </style>
 </head>
@@ -75,7 +76,7 @@ a{color:var(--accent)}
 /* ================= helpers ================= */
 const te=new TextEncoder(),td=new TextDecoder(),S=crypto.subtle;
 const b64u={enc(b){const a=b instanceof Uint8Array?b:new Uint8Array(b);let s='';for(let i=0;i<a.length;i+=0x8000)s+=String.fromCharCode(...a.subarray(i,i+0x8000));return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')},
-dec(s){s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const bin=atob(s);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a}};
+dec(s){s=s.replace(/[^A-Za-z0-9_-][\s\S]*$/,'').replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const bin=atob(s);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a}};
 const pack=o=>b64u.enc(te.encode(JSON.stringify(o))),unpack=s=>JSON.parse(td.decode(b64u.dec(s)));
 const rnd=n=>crypto.getRandomValues(new Uint8Array(n));
 function randInt(n){const lim=Math.floor(0x100000000/n)*n;const u=new Uint32Array(1);do crypto.getRandomValues(u);while(u[0]>=lim);return u[0]%n}
@@ -86,7 +87,7 @@ function h(tag,props,...kids){const el=document.createElement(tag);for(const[k,v
 const app=document.getElementById('app');
 /* links carry their data after ? (Messages link previews drop anything after #); older # links still work */
 const currentFrag=()=>location.search.slice(1)||location.hash.slice(1);
-function clear(){app.replaceChildren();window.scrollTo(0,0);lastView='';return app}
+function clear(){app.replaceChildren();clearTimeout(toastT);document.getElementById('toast')?.classList.remove('show');window.scrollTo(0,0);lastView='';return app}
 const card=(title,help,...kids)=>h('section',{class:'card'},title?h('h2',{},title):null,help?h('p',{class:'help'},help):null,...kids);
 let toastT;function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2600)}
 async function copy(text,label){try{await navigator.clipboard.writeText(text)}catch(e){const ta=h('textarea',{},text);document.body.append(ta);ta.select();try{document.execCommand('copy')}catch(_){}ta.remove()}toast(label||'Copied')}
@@ -96,25 +97,20 @@ const smsHref=(phone,text)=>'sms:'+(phone||'').replace(/[^\d+]/g,'')+'?&body='+e
 function downloadText(name,text){const url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'}));const a=h('a',{href:url,download:name});document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000)}
 function pickFile(cb){const i=h('input',{type:'file',accept:'.txt,.json,text/plain,application/json',style:'display:none'});i.addEventListener('change',async()=>{const f=i.files[0];i.remove();if(f)cb(await f.text())});document.body.append(i);i.click()}
 const safeURL=u=>{try{const x=new URL(u);return(x.protocol==='https:'||x.protocol==='http:')?x.href:null}catch(e){return null}};
-const slug=s=>(s||'gift-exchange').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'gift-exchange';
+const slug=s=>(s||'gift-exchange').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'gift-exchange';
 const fmtTs=ts=>new Date(ts).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 const isLocal=()=>location.protocol==='file:'||/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 /* small on-page "are you sure?" (pop-up dialogs are blocked in some browsers) */
-function askInline(slot,question,yesLabel,onYes){slot.replaceChildren(h('div',{class:'err'},h('p',{style:'margin:0 0 12px'},question),h('div',{class:'row'},h('button',{style:'flex:1',onclick:onYes},yesLabel),h('button',{style:'flex:1',onclick:()=>slot.replaceChildren()},'Cancel'))))}
+function askInline(slot,question,yesLabel,onYes){slot.replaceChildren(h('div',{class:'warn'},h('p',{style:'margin:0 0 12px'},question),h('div',{class:'row'},h('button',{style:'flex:1',onclick:onYes},yesLabel),h('button',{style:'flex:1',onclick:()=>slot.replaceChildren()},'Cancel'))))}
 
 /* ================= crypto ================= */
 const aesRaw=raw=>S.importKey('raw',raw,'AES-GCM',false,['encrypt','decrypt']);
-async function aesCode(code,salt){const base=await S.importKey('raw',te.encode(code),'PBKDF2',false,['deriveKey']);return S.deriveKey({name:'PBKDF2',salt,iterations:310000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])}
 async function seal(key,obj,aad){const iv=rnd(12);const ct=await S.encrypt({name:'AES-GCM',iv,additionalData:te.encode(aad)},key,te.encode(JSON.stringify(obj)));return[b64u.enc(iv),b64u.enc(ct)]}
 async function unseal(key,iv,ct,aad){const pt=await S.decrypt({name:'AES-GCM',iv:b64u.dec(iv),additionalData:te.encode(aad)},key,b64u.dec(ct));return JSON.parse(td.decode(pt))}
 async function genSigner(){const kp=await S.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);const j=await S.exportKey('jwk',kp.privateKey);return{d:j.d,pub:b64u.enc(await S.exportKey('raw',kp.publicKey))}}
 function jwkFrom(d,pub){const r=b64u.dec(pub);return{kty:'EC',crv:'P-256',d,x:b64u.enc(r.slice(1,33)),y:b64u.enc(r.slice(33,65))}}
 async function signWith(d,pub,data){const k=await S.importKey('jwk',jwkFrom(d,pub),{name:'ECDSA',namedCurve:'P-256'},false,['sign']);return b64u.enc(await S.sign({name:'ECDSA',hash:'SHA-256'},k,te.encode(data)))}
 async function verifyWith(pub,sig,data){const k=await S.importKey('raw',b64u.dec(pub),{name:'ECDSA',namedCurve:'P-256'},false,['verify']);return S.verify({name:'ECDSA',hash:'SHA-256'},k,b64u.dec(sig),te.encode(data))}
-const WORDS='ACORN AMBER ANCHOR APPLE ARROW AUTUMN BADGER BAKER BANJO BEACON BELL BERRY BISCUIT BRAMBLE BREEZE BUTTON CABIN CAMEL CANDLE CANYON CARDINAL CAROL CEDAR CHERRY CHESTNUT CIDER CLOVER COCOA COMET COOKIE COPPER CORAL COTTON CRICKET CRYSTAL DAISY DOLPHIN DRAGON EAGLE ECHO EMBER FALCON FEATHER FERN FIDDLE FIREFLY FLURRY FOREST FOX FROST GARDEN GARNET GINGER GLACIER GLOBE GOOSE GRAPE HARBOR HAZEL HOLLY HONEY ICICLE IGLOO IVY JASPER JINGLE JUNIPER KETTLE KIWI LANTERN LEMON LILAC LLAMA MANGO MAPLE MARBLE MEADOW MITTEN MOOSE MUFFIN NUTMEG OAK OCEAN OLIVE OTTER OWL PANDA PEACH PEBBLE PENGUIN PEPPER PICKLE PINE PLUM POPPY PRETZEL PUFFIN QUILT RABBIT RAVEN RIBBON RIVER ROBIN ROCKET SAFFRON SCARF SEAL SLEIGH SNOWY SPARROW SPRUCE STAR SUNNY SWAN TIGER TINSEL TOFFEE TULIP TURTLE VELVET VIOLET WALNUT WALRUS WILLOW WINTER WREATH YETI ZEBRA'.split(' ');
-const newCode=()=>`${WORDS[randInt(WORDS.length)]}-${WORDS[randInt(WORDS.length)]}-${100+randInt(900)}`;
-const normCode=s=>(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
-
 /* ================= the draw: one circle, rules respected ================= */
 function drawLoop(ids,banned){
   const n=ids.length;if(n<3)return null;
@@ -127,8 +123,8 @@ function drawLoop(ids,banned){
   const pairs={};for(let i=0;i<n;i++)pairs[path[i]]=path[(i+1)%n];return pairs}
 
 /* ================= organizer state ================= */
-const newOrg=()=>({v:3,sid:b64u.enc(rnd(6)),setupHash:'',ex:{name:'',budget:'',date:''},orgName:'',helper:'',helperPhone:'',people:[],apart:[],lastYear:[],draw:null});
-let org=LS.get('gx3.org',null);if(!org||org.v!==3)org=newOrg();
+const newOrg=()=>({v:4,sid:b64u.enc(rnd(6)),setupHash:'',ex:{name:'',budget:'',date:''},orgName:'',helper:'',helperPhone:'',people:[],apart:[],lastYear:[],draw:null});
+let org=LS.get('gx3.org',null);if(!org||org.v!==4)org=newOrg();
 const saveOrg=()=>LS.set('gx3.org',org);
 const pname=(id,list)=>((list||org.people).find(p=>p.id===id)||{}).name||'?';
 const exName=()=>(org.ex.name||'').trim()||'Gift exchange';
@@ -138,18 +134,22 @@ const helperName=()=>org.helper||'whoever set this up';
 function setupPayload(){const idx=id=>org.people.findIndex(p=>p.id===id);
   return{v:3,k:'setup',sid:org.sid,ex:org.ex,o:org.orgName,hp:org.helper,hph:org.helperPhone,p:org.people.map(p=>[p.name,p.phone||'']),a:org.apart.map(([a,b])=>[idx(a),idx(b)]),l:org.lastYear.map(([a,b])=>[idx(a),idx(b)])}}
 const setupLink=()=>baseURL()+'?s='+pack(setupPayload());
-function applySetup(s){const people=s.p.map(([name,phone])=>({id:b64u.enc(rnd(6)),name,phone}));
+function applySetup(s){if(org.draw)LS.set('gx3.org.prev',org);const people=s.p.map(([name,phone])=>({id:b64u.enc(rnd(6)),name,phone}));
   org={...newOrg(),fromLink:true,sid:s.sid,setupHash:JSON.stringify(s),ex:s.ex||{name:'',budget:'',date:''},orgName:s.o||'',helper:s.hp||'',helperPhone:s.hph||'',people,
     apart:(s.a||[]).map(([i,j])=>[people[i]?.id,people[j]?.id]).filter(x=>x[0]&&x[1]),lastYear:(s.l||[]).map(([i,j])=>[people[i]?.id,people[j]?.id]).filter(x=>x[0]&&x[1])};saveOrg()}
 
 /* ---------- backup link (organizer's safety copy) ---------- */
-function backupLink(){const d=org.draw;
-  return baseURL()+'?o='+pack({v:3,k:'backup',sid:org.sid,setupHash:org.setupHash,ex:org.ex,o:org.orgName,hp:org.helper,hph:org.helperPhone,people:org.people,apart:org.apart,lastYear:org.lastYear,
-    d:{id:d.id,created:d.created,people:d.people,pairs:d.pairs,codes:d.codes,read:d.read,sk:d.sk,pub:d.pub,sentGroup:d.sentGroup,sentCode:d.sentCode}})}
-async function restoreBackup(b){
+function backupLink(){const d=org.draw,P=d.people,same=JSON.stringify(org.people)===JSON.stringify(P);
+  return baseURL()+'?o='+pack({v:4,k:'backup',sid:org.sid,ex:org.ex,o:org.orgName,hp:org.helper,hph:org.helperPhone,people:same?undefined:org.people,apart:org.apart,lastYear:org.lastYear,
+    d:{id:d.id,created:d.created,people:P,pairs:d.pairs,r:P.map(p=>d.read[p.id]),k:P.map(p=>d.sk[p.id]),u:P.map(p=>d.pub[p.id]),s:P.reduce((a,p,i)=>d.sentLink[p.id]?[...a,i]:a,[])}})}
+function expandBackup(b){const d=b.d;if(!d||!Array.isArray(d.r))return b;
+  const P=d.people,read={},sk={},pub={},sentLink={};P.forEach((p,i)=>{read[p.id]=d.r[i];sk[p.id]=d.k[i];pub[p.id]=d.u[i]});(d.s||[]).forEach(i=>{if(P[i])sentLink[P[i].id]=true});
+  return{...b,people:b.people||P,d:{...d,read,sk,pub,sentLink}}}
+function restoreBackup(b0){const b=expandBackup(b0);
   org={...newOrg(),sid:b.sid,setupHash:b.setupHash||'',ex:b.ex,orgName:b.o||'',helper:b.hp||'',helperPhone:b.hph||'',people:b.people,apart:b.apart||[],lastYear:b.lastYear||[],
-    draw:{...b.d,wl:{},sentCode:b.d.sentCode||{},sentGroup:!!b.d.sentGroup,backedUp:true,group:''}};
-  org.draw.group=await buildGroup(org.draw);saveOrg();
+    draw:{id:b.d.id,created:b.d.created,people:b.d.people,pairs:b.d.pairs,read:b.d.read,sk:b.d.sk,pub:b.d.pub,wl:{},sentLink:b.d.sentLink||{},backedUp:true}};
+  if(!org.setupHash)org.setupHash=JSON.stringify(setupPayload());
+  saveOrg();
 }
 
 /* ================= HELPER: set it up ================= */
@@ -158,18 +158,20 @@ function vSetup(errMsg,note){
   const keepY=lastView==='setup'?window.scrollY:0;
   clear();lastView='setup';
   requestAnimationFrame(()=>window.scrollTo(0,errMsg?document.body.scrollHeight:keepY));
-  app.append(h('h1',{},'Set up a gift exchange'),h('p',{class:'sub'},"Fill this in, then send it to whoever is running the draw. All they have to do is check the names and tap one button."));
-  const f=(label,obj,key,ph,type)=>h('label',{class:'field'},h('span',{},label),h('input',{type:type||'text',value:obj[key]||'',placeholder:ph,maxlength:'60',oninput:e=>{obj[key]=e.target.value;saveOrg()}}));
+  app.append(h('div',{class:'warn'},'Got a message from the organizer? Tap the link in that message instead. This page is for setting up a new exchange.'),h('h1',{},'Set up a gift exchange'),h('p',{class:'sub'},"Fill this in, then send it to whoever is running the draw. All they have to do is check the names and tap one button."));
+  const f=(label,obj,key,ph,type)=>h('label',{class:'field'},h('span',{},label),h('input',{type:type||'text',value:obj[key]||'',placeholder:ph,maxlength:'60',oninput:e=>{const v=e.target.value.replace(/\s+/g,' ').replace(/^ /,'');if(v!==e.target.value)e.target.value=v;obj[key]=v.trim();saveOrg()}}));
   app.append(card('The exchange',null,f('Name',org.ex,'name','Christmas 2026'),h('div',{class:'row2'},f('Spending limit',org.ex,'budget','$30'),f('Gift day',org.ex,'date','Dec 25'))));
-  app.append(card('Who is running it',"The organizer draws the names and sends everyone their code. You're the helper they can ask if they get stuck.",
-    f("Organizer's name",org,'orgName','Dad'),h('div',{class:'row2'},f('Your name',org,'helper','Richard'),f('Your phone (optional)',org,'helperPhone','555 123 4567','tel'))));
+  app.append(card('Who is running it',"The organizer draws the names and sends everyone their own link on Telegram. You're the helper they can ask if they get stuck. If the organizer is taking part, add them to the list below too.",
+    f("Organizer's name",org,'orgName','Dad'),(()=>{const o=(org.orgName||'').replace(/\s+/g,' ').trim().toLowerCase();return o&&org.people.length&&!org.people.some(p=>p.name.replace(/\s+/g,' ').trim().toLowerCase()===o)?h('p',{class:'muted small'},`${org.orgName.trim()} isn't on the list below. If they're taking part, add them with exactly this spelling.`):null})(),h('div',{class:'row2'},f('Your name',org,'helper','Richard'),f('Your phone (optional)',org,'helperPhone','+1 555 123 4567','tel'))));
 
   const nameIn=h('input',{type:'text',placeholder:'Name',maxlength:'40',id:'name-in',onkeydown:e=>{if(e.key==='Enter')add()}});
-  const phoneIn=h('input',{type:'tel',placeholder:'Phone (optional)',maxlength:'25',onkeydown:e=>{if(e.key==='Enter')add()}});
-  function add(){const n=nameIn.value.trim();if(!n)return;if(org.people.some(p=>p.name.toLowerCase()===n.toLowerCase())){toast(`${n} is already on the list`);return}org.people.push({id:b64u.enc(rnd(6)),name:n,phone:phoneIn.value.trim()});saveOrg();vSetup();setTimeout(()=>document.getElementById('name-in')?.focus(),0)}
-  app.append(card(`Who's in (${org.people.length})`,"Phone numbers are optional. With them, the organizer's Text button opens a message already addressed to that person.",
-    h('div',{class:'list'},org.people.length?org.people.map(p=>h('div',{class:'item'},h('span',{style:'flex:1'},p.name),h('input',{type:'tel',value:p.phone||'',placeholder:'Phone',style:'width:150px;flex:none','aria-label':p.name+' phone',oninput:e=>{p.phone=e.target.value.trim();saveOrg()}}),h('button',{class:'icon','aria-label':'Remove '+p.name,onclick:()=>{org.people=org.people.filter(x=>x.id!==p.id);org.apart=org.apart.filter(([a,b])=>a!==p.id&&b!==p.id);org.lastYear=org.lastYear.filter(([a,b])=>a!==p.id&&b!==p.id);saveOrg();vSetup()}},'✕'))):h('p',{class:'muted'},'No one yet.')),
-    h('div',{class:'row2',style:'margin-top:8px'},nameIn,phoneIn),h('button',{class:'wide',style:'margin-top:8px',onclick:add},'Add person')));
+  const phoneIn=h('input',{type:'tel',placeholder:'+1 555 123 4567',maxlength:'25',onkeydown:e=>{if(e.key==='Enter')add()}});
+  const needsPlus=ph=>!!ph&&!ph.trim().startsWith('+');
+  const plusNote=h('p',{class:'muted small',style:'margin:6px 0 0'},'Phone numbers need the country code, like +1 555 010 0004. Without it the organizer\'s Telegram button may open the wrong chat.');plusNote.hidden=!org.people.some(x=>needsPlus(x.phone));
+  function add(){const n=nameIn.value.replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/\s+/g,' ').trim();if(!n)return;if(org.people.some(p=>p.name.toLowerCase()===n.toLowerCase())){toast(`${n} is already on the list`);return}org.people.push({id:b64u.enc(rnd(6)),name:n,phone:phoneIn.value.trim()});saveOrg();vSetup();setTimeout(()=>document.getElementById('name-in')?.focus(),0)}
+  app.append(card(`Who's in (${org.people.length})`,"Phone numbers are optional, but add the country code, like +1 555 123 4567. With one, the organizer's Telegram button opens your chat with that person.",
+    h('div',{class:'list'},org.people.length?org.people.map(p=>h('div',{class:'item'},h('span',{style:'flex:1'},p.name),(()=>{const hint=h('div',{class:'muted small'},needsPlus(p.phone)?'country code? e.g. +1':'');return h('div',{style:'width:150px;flex:none'},h('input',{type:'tel',value:p.phone||'',placeholder:'+1 555 123 4567',style:'width:100%','aria-label':p.name+' phone',oninput:e=>{p.phone=e.target.value.trim();saveOrg();hint.textContent=needsPlus(p.phone)?'country code? e.g. +1':'';plusNote.hidden=!org.people.some(x=>needsPlus(x.phone))}}),hint)})(),h('button',{class:'icon','aria-label':'Remove '+p.name,onclick:()=>{org.people=org.people.filter(x=>x.id!==p.id);org.apart=org.apart.filter(([a,b])=>a!==p.id&&b!==p.id);org.lastYear=org.lastYear.filter(([a,b])=>a!==p.id&&b!==p.id);saveOrg();vSetup()}},'✕'))):h('p',{class:'muted'},'No one yet.')),
+    plusNote,h('div',{class:'row2',style:'margin-top:8px'},nameIn,phoneIn),h('button',{class:'wide',style:'margin-top:8px',onclick:add},'Add person')));
 
   const choose=label=>h('select',{'aria-label':label},h('option',{value:''},'Choose…'),org.people.map(p=>h('option',{value:p.id},p.name)));
   const s1=choose('First person'),s2=choose('Second person'),apartErr=h('div');
@@ -185,18 +187,21 @@ function vSetup(errMsg,note){
     org.people.length>=2?[h('p',{style:'margin:12px 0 6px'},h('b',{},org.apart.length?'Add another pair':'Add a pair')),h('div',{class:'row2'},s1,s2),h('button',{class:'wide',style:'margin-top:8px',onclick:addApart},'+ Add this pair'),apartErr]:h('p',{class:'muted'},'Add at least two people first.')));
 
   const pasteIn=h('input',{type:'text',placeholder:"Paste last year's backup link"});
-  app.append(card('Avoid repeats from last year',"Nobody gets the same person as last year. Use last year's results file or backup link.",
+  app.append(card('Avoid repeats from last year',"Nobody gets the same person as last year. Use last year's results file or backup link. Skip this if it's the first year.",
     org.lastYear.length?h('div',{class:'list'},org.lastYear.map(([g,r])=>h('div',{class:'item'},h('span',{},`${pname(g)} won't get ${pname(r)} again`),h('button',{class:'icon','aria-label':'Remove',onclick:()=>{org.lastYear=org.lastYear.filter(([x,y])=>!(x===g&&y===r));saveOrg();vSetup()}},'✕')))):null,
     h('button',{class:'wide',onclick:()=>pickFile(t=>importLastYear(t))},"Load last year's results file"),
     h('div',{class:'row',style:'margin-top:8px'},pasteIn,h('button',{onclick:()=>importLastYear(pasteIn.value)},'Use link'))));
 
   if(errMsg)app.append(h('div',{class:'err',style:'margin:0 0 14px'},errMsg));
   if(isLocal())app.append(h('div',{class:'warn'},"This page is running on your own computer, so links made here only work on this computer. Put the page online first (see the README)."));
-  const ready=()=>{if(org.people.length<3){vSetup('Add at least 3 people first.');return false}if(!org.ex.name.trim()){vSetup('Give the exchange a name first.');return false}return true};
-  const msg=()=>`Hi ${org.orgName||'there'}! The ${exName()} gift exchange is all set up. Tap this link, check the names and tap the big green button. The page walks you through the rest.${org.helper?` Text me if you get stuck. ${org.helper}`:''}\n${setupLink()}`;
+  const ready=()=>{if(org.people.length<3){vSetup('Add at least 3 people first.');return false}if(!org.ex.name.trim()){vSetup('Give the exchange a name first.');return false}
+    const bn=new Set();org.apart.forEach(([a,b])=>{bn.add(a+'>'+b);bn.add(b+'>'+a)});org.lastYear.forEach(([g,r])=>bn.add(g+'>'+r));
+    if(!drawLoop(org.people.map(p=>p.id),bn)){vSetup('These rules leave no way to draw names. Remove a kept-apart pair or a last-year rule.');return false}return true};
+  const msg=()=>`Hi ${org.orgName||'there'}! The ${exName()} gift exchange is all set up. Tap this link, check the names and tap the big green button. The page walks you through the rest.${org.helper?` Message me if you get stuck. ${org.helper}`:''}\n${setupLink()}`;
   const sentNote=h('div');
-  app.append(h('button',{class:'primary',onclick:async()=>{if(!ready())return;const r=await share(msg());if(r!=='cancelled')sentNote.replaceChildren(h('div',{class:'good'},r==='copied'?`Message copied. Paste it into a text to ${org.orgName||'the organizer'}.`:`Sent. ${org.orgName||'The organizer'} can take it from here.`))}},`Send to ${org.orgName||'the organizer'}`),sentNote);
-  app.append(h('div',{class:'foot'},h('button',{class:'linkbtn',onclick:()=>{if(ready()){org.setupHash=JSON.stringify(setupPayload());saveOrg();vWelcome()}}},"I'm the organizer. Draw on this device"),h('br'),h('button',{class:'linkbtn',onclick:()=>pickFile(t=>reopen(t))},'Reopen a saved results file')));
+  app.append(h('button',{class:'primary',onclick:async()=>{if(!ready())return;const r=await share(msg());if(r!=='cancelled')sentNote.replaceChildren(h('div',{class:'good'},r==='copied'?`Message copied. Send it to ${org.orgName||'the organizer'} on Telegram (or by text).`:`Sent. ${org.orgName||'The organizer'} can take it from here.`))}},`Send to ${org.orgName||'the organizer'}`),sentNote);
+  if(isLocal())app.append(h('div',{class:'warn',style:'margin:12px 0 0'},"Links made on this computer only work on this computer. Put the page online first (see the README)."));
+  app.append(h('div',{class:'foot'},h('button',{class:'linkbtn',onclick:()=>{if(ready()){org.setupHash=JSON.stringify(setupPayload());org.fromLink=false;org.ready=true;saveOrg();vWelcome()}}},"I'm the organizer. Draw on this device"),h('br'),h('button',{class:'linkbtn',onclick:()=>pickFile(t=>reopen(t))},'Reopen a saved results file')));
 }
 
 function parseSaved(text){
@@ -216,12 +221,12 @@ function importLastYear(text){
   const d=m.d||m.draw;if(!d||!d.pairs){toast("That file doesn't have a finished draw in it.");return}
   const old=d.people||m.people||[];
   if(!org.people.length)org.people=old.map(p=>({id:b64u.enc(rnd(6)),name:p.name,phone:p.phone||''}));
-  const by=n=>org.people.find(p=>p.name.toLowerCase()===String(n).toLowerCase());let added=0;
-  for(const[g,r]of Object.entries(d.pairs)){const a=by(pname(g,old)),b=by(pname(r,old));if(a&&b&&!org.lastYear.some(([x,y])=>x===a.id&&y===b.id)){org.lastYear.push([a.id,b.id]);added++}}
+  const by=n=>org.people.find(p=>p.name.toLowerCase()===String(n).toLowerCase());let added=0;const miss=[];
+  for(const[g,r]of Object.entries(d.pairs)){const gn=pname(g,old),rn=pname(r,old),a=by(gn),b=by(rn);if(!a&&!miss.includes(gn))miss.push(gn);if(!b&&!miss.includes(rn))miss.push(rn);if(a&&b&&!org.lastYear.some(([x,y])=>x===a.id&&y===b.id)){org.lastYear.push([a.id,b.id]);added++}}
   if(!org.apart.length&&m.apart)for(const[a,b]of m.apart){const x=by(pname(a,m.people||old)),y=by(pname(b,m.people||old));if(x&&y)org.apart.push([x.id,y.id])}
-  saveOrg();vSetup();toast(`Loaded ${added} pairing${added===1?'':'s'} from last year`);
+  saveOrg();vSetup();toast(miss.length?`Loaded ${added} pairing${added===1?'':'s'}. Couldn't match: ${miss.join(', ')}. Check the spelling in this year's list.`:`Loaded ${added} pairing${added===1?'':'s'} from last year`);
 }
-async function reopen(text){const m=parseSaved(text);if(!m||m.v!==3||!m.d){toast("That doesn't look like a results file from this page.");return}await restoreBackup(m);vHome();toast('Reopened')}
+async function reopen(text){const m=parseSaved(text);if(!m||(m.v!==3&&m.v!==4)||!m.d){toast("That doesn't look like a results file from this page.");return}restoreBackup(m);vHome();toast('Reopened')}
 
 /* ================= ORGANIZER ================= */
 function vWelcome(){
@@ -233,110 +238,155 @@ function vWelcome(){
   if(org.ex.budget||org.ex.date)app.append(card('Details',null,org.ex.budget?h('p',{class:'kv'},h('b',{},'Spending limit: '),org.ex.budget):null,org.ex.date?h('p',{class:'kv'},h('b',{},'Gift day: '),org.ex.date):null));
   const err=h('div');
   const go=h('button',{class:'primary',onclick:async()=>{go.disabled=true;go.textContent='Drawing names…';err.replaceChildren();
-    try{const ok=await doDraw();if(!ok){go.disabled=false;go.textContent='Everything looks right. Draw names!';err.append(h('div',{class:'err'},`These rules leave no way to draw names. Ask ${helperName()} to remove a rule.`))}}
+    try{const ok=await doDraw();if(!ok){go.disabled=false;go.textContent='Everything looks right. Draw names!';err.append(h('div',{class:'err'},h('p',{style:'margin:0'},impossibleText(rules)),!org.fromLink?h('button',{style:'margin-top:12px',onclick:()=>vSetup()},'Back to setup'):null))}}
     catch(e){console.error(e);go.disabled=false;go.textContent='Everything looks right. Draw names!';err.append(h('div',{class:'err'},'Something went wrong. Try again.'))}}},'Everything looks right. Draw names!');
   app.append(go,err);
-  app.append(h('p',{class:'muted center',style:'margin-top:16px'},`Something wrong? ${org.helper?`Ask ${org.helper} to fix it and send you a new link.`:'Fix it before drawing.'}`),
-    org.helperPhone?h('div',{class:'center'},h('a',{class:'btn',href:smsHref(org.helperPhone,`Hi ${org.helper}, something needs fixing in the gift exchange: `)},`Text ${org.helper}`)):null,
-    !org.fromLink?h('div',{class:'foot'},h('button',{onclick:()=>vSetup()},'Back to setup')):null);
+  const prev=LS.get('gx3.org.prev',null);
+  if(prev&&prev.v===4&&prev.draw)app.append(h('button',{class:'wide',style:'margin-top:12px',onclick:()=>{org=prev;saveOrg();try{localStorage.removeItem('gx3.org.prev')}catch(e){}history.replaceState(null,'',baseURL());vHome()}},'Changed my mind, keep the old draw'));
+  app.append(...[h('p',{class:'muted center',style:'margin-top:16px'},`Something wrong? ${org.helper?`Ask ${org.helper} to fix it and send you a new link.`:org.fromLink?'Ask whoever sent you this link to fix it and send a new one.':'Go back and fix it before drawing.'}`),
+    org.helperPhone?h('div',{class:'center'},h('a',{class:'btn',href:smsHref(org.helperPhone,`Hi ${org.helper||'there'}, something needs fixing in the gift exchange: `)},`Text ${org.helper||'them'}`)):null,
+    !org.fromLink?h('div',{class:'foot'},h('button',{onclick:()=>vSetup()},'Back to setup')):null].filter(Boolean));
 }
 
-async function buildGroup(d){
-  const list=[];
-  for(const p of d.people){const r=d.pairs[p.id],salt=rnd(16);
-    const[iv,ct]=await seal(await aesCode(normCode(d.codes[p.id]),salt),{me:{read:d.read[p.id],sk:d.sk[p.id]},to:{id:r,read:d.read[r]}},`g2|${d.id}|${p.id}`);
-    list.push([p.id,p.name,d.pub[p.id],b64u.enc(salt),iv,ct])}
-  return 'g='+pack({v:2,d:d.id,ex:exName(),b:org.ex.budget,dt:org.ex.date,o:org.orgName,p:list});
+const normName=n=>(n||'').replace(/\s+/g,' ').trim().toLowerCase();
+const isMine=p=>{const o=normName(org.orgName);return !!o&&normName(p.name)===o};
+function impossibleText(rules){const who=org.fromLink?helperName():'You',n=org.people.length,cnt={};
+  org.apart.forEach(([a,b])=>{(cnt[a]=cnt[a]||new Set()).add(b);(cnt[b]=cnt[b]||new Set()).add(a)});
+  let top=null,max=0;for(const[id,x]of Object.entries(cnt))if(x.size>max){max=x.size;top=id}
+  if(top&&max>(n-1)/2)return`${pname(top)} is kept apart from too many people. ${who} will need to remove some of those rules.`;
+  if(org.people.length<3)return'There need to be at least 3 people to draw names.';
+  return`These rules leave no way to draw names. ${who} will need to remove one of these: ${rules.join(', ')}.`}
+function personalLink(d,p){
+  const r=d.pairs[p.id],q=d.people.find(x=>x.id===r);
+  return baseURL()+'?m='+pack({v:4,k:'me',d:d.id,ex:exName(),b:org.ex.budget,dt:org.ex.date,o:org.orgName,
+    me:{id:p.id,name:p.name,pub:d.pub[p.id],read:d.read[p.id],sk:d.sk[p.id]},to:{id:r,name:q.name,read:d.read[r],pub:d.pub[r]}});
+}
+function tgPhone(phone){
+  let s=(phone||'').replace(/\(0\)/g,'').split(/[A-Za-z]/)[0].replace(/[^\d+]/g,'');let plus=s.startsWith('+');s=s.replace(/\+/g,'');
+  if(!plus&&s.startsWith('00')){plus=true;s=s.slice(2)}
+  if(plus)return s.length>=7&&s.length<=15?s:'';
+  /* no country code: only accept a North American shape (area code and exchange both start 2 to 9) */
+  const na=/^[2-9]\d{2}[2-9]\d{6}$/;
+  if(s.length===10&&na.test(s))return '1'+s;
+  if(s.length===11&&s[0]==='1'&&na.test(s.slice(1)))return s;
+  return '';
 }
 async function doDraw(){
   const people=org.people;if(people.length<3)return false;
   const banned=new Set();org.apart.forEach(([a,b])=>{banned.add(a+'>'+b);banned.add(b+'>'+a)});org.lastYear.forEach(([g,r])=>banned.add(g+'>'+r));
-  const pairs=drawLoop(people.map(p=>p.id),banned);if(!pairs)return false;
-  const d={id:b64u.enc(rnd(6)),created:Date.now(),people:people.map(p=>({...p})),pairs,codes:{},read:{},sk:{},pub:{},wl:{},group:'',sentGroup:false,sentCode:{},backedUp:false};
-  for(const p of people){const s=await genSigner();d.sk[p.id]=s.d;d.pub[p.id]=s.pub;d.read[p.id]=b64u.enc(rnd(32));d.codes[p.id]=newCode()}
-  d.group=await buildGroup(d);
+  const ids=people.map(p=>p.id);let pairs=null;
+  if(org.draw){const b2=new Set(banned);Object.entries(org.draw.pairs).forEach(([g,r])=>b2.add(g+'>'+r));pairs=drawLoop(ids,b2)}
+  if(!pairs)pairs=drawLoop(ids,banned);if(!pairs)return false;
+  const d={id:b64u.enc(rnd(6)),created:Date.now(),people:people.map(p=>({...p})),pairs,read:{},sk:{},pub:{},wl:{},sentLink:{},backedUp:false};
+  for(const p of people){const s=await genSigner();d.sk[p.id]=s.d;d.pub[p.id]=s.pub;d.read[p.id]=b64u.enc(rnd(32))}
+  if(org.draw)LS.set('gx3.org.prev',org);else{try{localStorage.removeItem('gx3.org.prev')}catch(e){}}
   org.draw=d;saveOrg();vDrawn();return true;
 }
 
 function vDrawn(){
-  clear();
+  clear();const prev=LS.get('gx3.org.prev',null);
   app.append(h('div',{class:'center',style:'margin-top:30px'},h('div',{class:'gift'},'🎉'),h('h1',{},'Names are drawn!'),h('p',{class:'sub'},"Everyone has someone, and nobody got themselves or their partner. You don't need to look. The page keeps track for you.")),
-    card(null,null,h('p',{style:'margin:0 0 14px'},'Now there are 3 quick jobs. The page will walk you through each one.'),h('button',{class:'primary',onclick:vHome},'Show me the jobs')));
+    card(null,null,h('p',{style:'margin:0 0 14px'},'Now there are 2 quick jobs. The page will walk you through each one.'),h('button',{class:'primary',onclick:vHome},'Show me the jobs')));
+  if(prev&&prev.v===4&&prev.draw)app.append(h('div',{class:'foot'},h('button',{class:'linkbtn',onclick:()=>{org=prev;saveOrg();try{localStorage.removeItem('gx3.org.prev')}catch(e){}vHome()}},'Changed my mind, go back to the old draw')));
 }
 
 function vHome(){
-  clear();const d=org.draw,P=d.people,nSent=P.filter(p=>d.sentCode[p.id]).length;
-  const allDone=d.sentGroup&&nSent===P.length&&d.backedUp;
+  clear();const d=org.draw,P=d.people,O=P.filter(p=>!isMine(p)),nSent=O.filter(p=>d.sentLink[p.id]).length;
+  const allDone=nSent===O.length&&d.backedUp;
   app.append(h('h1',{},exName()),h('p',{class:'sub'},`You're the organizer. ${allDone?"You're all done. 🎄":"Here's what's left to do."}`));
   if(isLocal())app.append(h('div',{class:'warn'},"Heads up: this page is running on a computer, not online, so the links won't open on other phones."));
-  const nextJob=!d.sentGroup?1:nSent<P.length?2:!d.backedUp?3:0;
-  const todo=(done,num,title,text,btnLabel,onClick)=>{const isNext=num===nextJob;return h('div',{class:'todo'},h('div',{class:'tick'+(done?' done':'')},done?'✓':num),h('div',{class:'grow'},h('p',{},h('b',{},title),isNext?h('span',{class:'chip',style:'margin-left:8px'},'next'):null),h('p',{class:'muted'},text),h('button',{class:isNext?'primary':'wide',style:isNext?'min-height:52px;font-size:18px':'',onclick:onClick},btnLabel)))};
+  const nextJob=nSent<O.length?1:!d.backedUp?2:0;
+  const todo=(done,num,title,text,btnLabel,onClick,extra)=>{const isNext=num===nextJob;return h('div',{class:'todo'},h('div',{class:'tick'+(done?' done':'')},done?'✓':num),h('div',{class:'grow'},h('p',{},h('b',{},title),isNext?h('span',{class:'chip',style:'margin-left:8px'},'next'):null),h('p',{class:'muted'},text),h('button',{class:isNext?'primary':'wide',style:isNext?'min-height:52px;font-size:18px':'',onclick:onClick},btnLabel),extra))};
   app.append(card('Your jobs',null,
-    todo(d.sentGroup,1,'Send the family link',"One message to the family group text. It's safe for everyone to see.",d.sentGroup?'Send it again':'Do this now',vSendFamily),
-    todo(nSent===P.length,2,'Send everyone their secret code',`One private text per person. ${nSent} of ${P.length} sent.`,nSent===P.length?'Send a code again':nSent?'Keep going':'Do this now',()=>vSendCodes(nSent===P.length?0:P.findIndex(p=>!d.sentCode[p.id]))),
-    todo(d.backedUp,3,'Save a backup','In case this phone loses the page.',d.backedUp?'Send it again':'Do this now',vBackup)));
-  if(allDone)app.append(h('div',{class:'good',style:'margin:0 0 16px'},"That's everything! People will open the link, tap their name, type their code and see who they're buying for. Come back here if someone needs help."));
+    todo(nSent===O.length,1,'Send everyone their link',`One private Telegram message per person. ${nSent} of ${O.length} sent.`,nSent===O.length?'Send a link again':nSent?'Keep going':'Do this now',()=>vSendLinks(P.findIndex(p=>!isMine(p)&&(nSent===O.length||!d.sentLink[p.id]))),
+      h('details',{},h('summary',{},'Who has their link'),h('div',{},P.map((p,i)=>isMine(p)?h('div',{class:'item'},h('span',{},p.name),h('span',{class:'muted small'},'Yours')):h('div',{class:'item'},h('div',{class:'row',style:'flex-wrap:nowrap'},h('div',{class:'tick'+(d.sentLink[p.id]?' done':''),'aria-label':d.sentLink[p.id]?'Sent':'Not sent yet'},d.sentLink[p.id]?'✓':''),h('span',{},p.name)),h('button',{class:'icon',onclick:()=>vSendLinks(i,true)},d.sentLink[p.id]?'Send again':'Send')))))),
+    todo(d.backedUp,2,'Save a backup','In case this phone loses the page.',d.backedUp?'Send it again':'Do this now',vBackup)));
+  if(allDone)app.append(h('div',{class:'good',style:'margin:0 0 16px'},"That's everything! Everyone can tap their own link to see who they're buying for. Come back here if someone needs help."));
 
+  const mine=P.find(isMine);
+  if(mine)app.append(card("Who you're buying for",'Your own private link is on this phone. Tap to see your person.',h('button',{class:'wide',onclick:()=>{location.href=personalLink(d,mine)}},'See my person')));
   const got=P.filter(p=>d.wl[p.id]);
-  app.append(card(`Wishlists (${got.length} of ${P.length})`,"People can add a wishlist and post it in the family text. If you tap one of those links on this phone, it shows up here too. You don't have to do anything.",
+  app.append(card(`Wishlists (${got.length} of ${P.length})`,"People can add a wishlist and post it in the family group chat. If you tap one of those links on this phone, it shows up here too. You don't have to do anything.",
     got.map(p=>h('details',{},h('summary',{},`${p.name}'s wishlist`),h('div',{},h('p',{class:'muted small'},'Updated '+fmtTs(d.wl[p.id].ts)),wlBody(d.wl[p.id].data,null))))));
 
   const peekSlot=h('div'),redoSlot=h('div'),moreSlot=h('div');
   const tbl=h('div',{class:'list'},P.map(p=>h('div',{class:'item'},`${p.name} is buying for ${pname(d.pairs[p.id],P)}`)));
   app.append(card('Need help?',null,
-    h('details',{},h('summary',{},'Someone lost their code'),h('div',{},h('p',{class:'muted'},'Tap their name to text it to them again.'),h('div',{class:'names'},P.map((p,i)=>h('button',{onclick:()=>vSendCodes(i,true)},p.name))))),
-    h('details',{},h('summary',{},"Someone can't open the family link"),h('div',{},h('p',{class:'muted'},'Send it to them again. Tell them to tap the whole link, then tap their name.'),h('button',{class:'wide',onclick:vSendFamily},'Send the family link again'))),
+    h('details',{},h('summary',{},'Someone lost their link'),h('div',{},h('p',{class:'muted'},'Tap their name to send it to them again.'),h('div',{class:'names'},P.map((p,i)=>isMine(p)?null:h('button',{onclick:()=>vSendLinks(i,true)},p.name))))),
     h('details',{},h('summary',{},'I want to see who has who'),h('div',{},h('p',{class:'muted'},"Only if you need to. It'll spoil the surprise of who's buying for you."),
       h('button',{class:'wide',onclick:()=>askInline(peekSlot,'Show the full list? Make sure nobody else can see your screen.','Show me',()=>peekSlot.replaceChildren(tbl))},'Show the list'),peekSlot)),
-    h('details',{},h('summary',{},'We need to draw names again'),h('div',{},h('p',{class:'muted'},'Everyone gets a new person and a new code. You would send the family link and all the codes again.'),
-      h('button',{class:'wide',onclick:()=>askInline(redoSlot,'Draw names again? The codes you already sent will stop working.','Yes, draw again',async()=>{redoSlot.replaceChildren(h('p',{class:'muted'},'Drawing…'));const ok=await doDraw();if(!ok)redoSlot.replaceChildren(h('div',{class:'err'},'No way to draw with these rules.'))})},'Draw again'),redoSlot)),
+    h('details',{},h('summary',{},'We need to draw names again'),h('div',{},h('p',{class:'muted'},'Everyone gets a new person and a new link.'),
+      h('button',{class:'wide',onclick:()=>askInline(redoSlot,'Draw names again? Everyone gets a new person and a new link. The old links still open, so tell everyone to use the newest message from you.','Yes, draw again',async()=>{redoSlot.replaceChildren(h('p',{class:'muted'},'Drawing…'));const ok=await doDraw();if(!ok)redoSlot.replaceChildren(h('div',{class:'err'},'No way to draw with these rules.'))})},'Draw again'),redoSlot)),
     org.helper?h('details',{},h('summary',{},'Something else'),h('div',{},h('p',{class:'muted'},`Ask ${org.helper}.`),org.helperPhone?h('a',{class:'btn wide',href:smsHref(org.helperPhone,`Hi ${org.helper}, I need help with the gift exchange: `)},`Text ${org.helper}`):null)):null,
-    h('details',{},h('summary',{},`Extras${org.helper?' for '+org.helper:''}`),h('div',{},
-      h('button',{class:'wide',onclick:()=>downloadText(`${slug(exName())}-results.txt`,resultsText())},'Save results as a text file'),
-      h('button',{class:'wide',style:'margin-top:8px',onclick:()=>askInline(moreSlot,'Erase everything on this device and go back to setup?','Yes, erase',()=>{org=newOrg();saveOrg();history.replaceState(null,'',baseURL());vSetup()})},'Erase and start over'),moreSlot))));
+    h('details',{},h('summary',{},org.helper?`For ${org.helper}`:'Extras'),h('div',{},
+      h('button',{class:'wide',onclick:()=>downloadText(`${slug(exName())}-results.txt`,resultsText())},'Save the list to a file'),
+      h('button',{class:'wide',style:'margin-top:8px',onclick:()=>askInline(moreSlot,'Erase everything on this phone? This cannot be undone.','Yes, erase',()=>{try{Object.keys(localStorage).filter(k=>k.startsWith('gx3.')).forEach(k=>localStorage.removeItem(k))}catch(e){}org=newOrg();history.replaceState(null,'',baseURL());clear();app.append(h('div',{class:'center',style:'margin-top:48px'},h('h1',{},'Everything is erased.'),h('p',{class:'sub'},'Nothing is kept on this phone any more.'),h('button',{class:'primary',onclick:()=>vSetup()},'Start again')))})},'Erase and start over'),moreSlot))));
 }
 
-function vSendFamily(){
-  clear();const d=org.draw,link=baseURL()+'?'+d.group;
-  const msg=`🎄 ${exName()} gift exchange!\nTap this link, tap your name, then type in the secret code I'm texting you separately.\n${link}`;
-  const after=h('div');
-  app.append(h('span',{class:'step'},'Job 1 of 3'),h('h1',{},'Send the family link'),h('p',{class:'sub'},"This goes in your family group text. It's safe for everyone to see because nobody can open their result without their own code."),
-    card('The message',null,h('div',{class:'quote'},msg.replace(link,'[the family link]'))),
-    h('button',{class:'primary',onclick:async()=>{const r=await share(msg);if(r==='cancelled')return;d.sentGroup=true;saveOrg();
-      after.replaceChildren(h('div',{class:'good'},r==='copied'?'Copied! Now open your family group text, press and hold in the message box, tap Paste, then send.':'Done! If it went to the family group text, you can move on.'),h('button',{class:'wide',style:'margin-top:12px',onclick:vHome},'Back to my jobs'))}},'Send it'),after,
-    h('p',{class:'muted center',style:'margin-top:14px'},"When you tap Send it, choose Messages, then pick your family group."),
-    h('div',{class:'foot'},h('button',{onclick:vHome},'Back')));
-}
-
-function vSendCodes(i,single){
+function vSendLinks(i,single){
   clear();const d=org.draw,P=d.people,p=P[i];if(!p)return vHome();
-  const code=d.codes[p.id];
-  const msg=`Your secret code for the ${exName()} gift exchange is:\n${code}\nKeep it to yourself. Open the family link from the group text, tap your name and type this in.`;
-  const next=()=>{if(single)return vHome();const j=P.findIndex((q,k)=>k>i&&!d.sentCode[q.id]);const k=j>=0?j:P.findIndex(q=>!d.sentCode[q.id]);if(k>=0&&k!==i)vSendCodes(k);else vHome()};
-  const after=h('div');
-  const mark=()=>{d.sentCode[p.id]=true;saveOrg();setTimeout(()=>after.replaceChildren(h('div',{class:'good'},`If the text to ${p.name} went through, you're done with this one.`),h('button',{class:'primary',style:'margin-top:12px',onclick:next},single||P.every(q=>d.sentCode[q.id])?'Back to my jobs':'Next person')),300)};
-  const sentCount=P.filter(q=>d.sentCode[q.id]).length;
-  app.append(h('span',{class:'step'},single?'Resend a code':`Job 2 of 3 · ${sentCount} of ${P.length} sent`),h('h1',{},`Send ${p.name}'s code`),
-    h('p',{class:'sub'},`Send this to ${p.name} only, in a private text. Not the group text.`),
-    h('div',{class:'code'},code),
-    h('a',{class:'btn primary',href:smsHref(p.phone,msg),onclick:mark},`Text ${p.name}`),
-    h('p',{class:'muted center',style:'margin:10px 0 0'},p.phone?`Messages will open, addressed to ${p.name}. Just tap send.`:`Messages will open. Type ${p.name}'s name in the To box, then tap send.`),
-    after,
-    card(null,null,h('p',{class:'muted',style:'margin:0 0 10px'},"Not using Messages? Copy it and send it another way."),h('div',{class:'row'},h('button',{style:'flex:1',onclick:()=>{copy(msg,`${p.name}'s message copied`);mark()}},'Copy the message'),!single?h('button',{style:'flex:1',onclick:next},'Skip for now'):null)),
+  const O=P.filter(q=>!isMine(q)),sentOthers=()=>O.filter(q=>d.sentLink[q.id]).length;
+  const markSent=()=>{if(!d.sentLink[p.id])d.backedUp=false;d.sentLink[p.id]=true;saveOrg()};
+  const ok=q=>!d.sentLink[q.id]&&!isMine(q);
+  const next=()=>{if(single)return vHome();const j=P.findIndex((q,k)=>k>i&&ok(q));const k=j>=0?j:P.findIndex(ok);if(k>=0&&k!==i)vSendLinks(k);else vHome()};
+  if(isMine(p)){
+    const allSent=O.every(q=>d.sentLink[q.id]),back=single||allSent;
+    app.append(h('span',{class:'step'},single?'Your own link':`Job 1 of 2 · ${sentOthers()} of ${O.length} sent`),h('h1',{},'This one is yours'),
+      h('p',{class:'sub'},"You'll find who you're buying for on your jobs page. Nothing to send."),
+      h('button',{class:'primary',onclick:back?()=>vHome():next},back?'Back to my jobs':'Next person'));
+    return;
+  }
+  const link=personalLink(d,p),tg=tgPhone(p.phone),digits=(p.phone||'').replace(/\D/g,'');
+  const body=`🎁 Hi ${p.name}! Tap this to see who you're buying for in the ${exName()} gift exchange. Keep it to yourself.`;
+  const msg=body+'\n'+link;
+  const pasteNote=`Copied. Open Telegram, open your chat with ${p.name}, press and hold in the message box, tap Paste, then send.`;
+  const area=h('div');
+  const isLast=()=>single||P.every((q,k)=>k===i||isMine(q)||d.sentLink[q.id]);
+  const yes=()=>{try{localStorage.removeItem('gx3.org.prev')}catch(e){}markSent();next()};
+  const askDone=(note,tgUsed)=>area.replaceChildren(...[note?h('div',{class:'good',style:'margin:0 0 12px'},note):null,
+    card(`Did the message to ${p.name} go through?`,tgUsed?"If Telegram didn't open, tap No and use Text or Copy instead.":null,h('button',{class:'primary',onclick:yes},isLast()?'Yes, back to my jobs':'Yes, next person'),
+      h('button',{class:'wide',style:'margin-top:10px',onclick:showButtons},'No, try another way'))].filter(Boolean));
+  function showButtons(){area.replaceChildren(...[
+    tg?h('a',{class:'btn primary',href:'tg://resolve?phone='+tg+'&text='+encodeURIComponent(msg),onclick:()=>setTimeout(()=>askDone(null,true),300)},`Send to ${p.name} on Telegram`)
+      :h('button',{class:'primary',onclick:async()=>{const r=await share(msg);if(r==='cancelled')return;askDone(r==='copied'?pasteNote:null)}},`Send to ${p.name}`),
+    h('p',{class:'muted center',style:'margin:10px 0 16px'},tg?`Telegram will open on your chat with ${p.name} (+${tg}). Just tap send.`:`Choose Telegram, then pick ${p.name}. Not the family group.`),
+    !tg&&(p.phone||'').trim()?h('p',{class:'muted center',style:'margin:0 0 16px'},`The number on file for ${p.name} is missing its country code or doesn't look right, so use the Share button.`):null,
+    card(null,null,h('p',{class:'muted',style:'margin:0 0 10px'},"Not using Telegram? Use one of these instead."),
+      h('div',{class:'row'},digits.length>=7?h('a',{class:'btn',style:'flex:1',href:smsHref(p.phone,msg),onclick:()=>setTimeout(()=>askDone(),300)},`Text ${p.name} instead`):null,h('button',{style:'flex:1',onclick:()=>{copy(msg,`${p.name}'s message copied`);askDone(pasteNote)}},'Copy the message')),
+      !single?h('div',{class:'row',style:'margin-top:8px'},h('button',{style:'flex:1',onclick:next},'Skip for now')):null)].filter(Boolean))}
+  const sentCount=sentOthers();
+  app.append(h('span',{class:'step'},single?'Resend a link':`Job 1 of 2 · ${sentCount} of ${O.length} sent`),h('h1',{},`Send ${p.name}'s link`),
+    h('p',{class:'sub'},`Send this to ${p.name} only, as a private message. Not the group.`),
+    card(`The message`,null,h('div',{class:'quote'},body,h('p',{class:'muted',style:'margin:8px 0 0'},`The page adds ${p.name}'s own link underneath.`))),
+    area,
     h('div',{class:'foot'},h('button',{onclick:vHome},'Back to my jobs')));
+  showButtons();
   window.scrollTo(0,0);
 }
 
 function vBackup(){
   clear();const link=backupLink();
   const msg=`${exName()} gift exchange: organizer backup. If the organizer page ever disappears, tap this to get it back. Don't share this with the family. It shows who has who.\n${link}`;
-  const after=h('div');
-  app.append(h('span',{class:'step'},'Job 3 of 3'),h('h1',{},'Save a backup'),
-    h('p',{class:'sub'},`If this phone ever loses the page, the backup brings it back. Text or email it to yourself${org.helper?` or to ${org.helper}`:''}. Don't send it to the family.`),
-    h('button',{class:'primary',onclick:async()=>{const r=await share(msg);if(r==='cancelled')return;org.draw.backedUp=true;saveOrg();
-      after.replaceChildren(h('div',{class:'good'},r==='copied'?'Copied! Paste it into a text or email to yourself.':'Saved. Keep that message somewhere you can find it.'),h('button',{class:'wide',style:'margin-top:12px',onclick:vHome},'Back to my jobs'))}},'Send the backup'),after,
-    org.helperPhone?h('a',{class:'btn wide',style:'margin-top:10px',href:smsHref(org.helperPhone,msg),onclick:()=>{org.draw.backedUp=true;saveOrg();setTimeout(vHome,600)}},`Text it to ${org.helper}`):null,
-    h('div',{class:'foot'},h('button',{onclick:vHome},'Back')));
+  const hp=org.helperPhone,hn=org.helper||'them',tg=tgPhone(hp),digits=(hp||'').replace(/\D/g,'');
+  const long=msg.length>3900,canText=digits.length>=7;
+  const area=h('div');
+  const yes=()=>{org.draw.backedUp=true;saveOrg();vHome()};
+  const askDone=(note,tgUsed)=>area.replaceChildren(...[note?h('div',{class:'good',style:'margin:0 0 12px'},note):null,
+    card('Did the backup go through?',tgUsed?"If Telegram didn't open, tap No and use Text or Copy instead.":null,h('button',{class:'primary',onclick:yes},'Yes, back to my jobs'),
+      h('button',{class:'wide',style:'margin-top:10px',onclick:showButtons},'No, try another way'))].filter(Boolean));
+  const shareBtn=(primary,label)=>h('button',{class:primary?'primary':'wide',style:primary?'':'margin-top:10px',onclick:async()=>{const r=await share(msg);if(r==='cancelled')return;askDone(r==='copied'?`Copied. Open Telegram, open your chat with ${hn}, press and hold in the message box, tap Paste, then send.`:null)}},label);
+  const smsBtn=(primary,label)=>h('a',{class:primary?'btn primary':'btn wide',style:primary?'':'margin-top:10px',href:smsHref(hp,msg),onclick:()=>setTimeout(()=>askDone(),300)},label);
+  function showButtons(){area.replaceChildren(...(long&&canText?[
+    smsBtn(true,`Text it to ${hn}`),
+    h('p',{class:'muted center',style:'margin:10px 0 0'},'This one is long, so it goes by text message rather than Telegram. If that fails, tap Send it another way and choose Mail or Notes.'),
+    shareBtn(false,'Send it another way')]:[
+    tg?h('a',{class:'btn primary',href:'tg://resolve?phone='+tg+'&text='+encodeURIComponent(msg),onclick:()=>setTimeout(()=>askDone(null,true),300)},`Send it to ${hn} on Telegram`):null,
+    tg?smsBtn(false,`Text it to ${hn} instead`):(canText?smsBtn(true,`Text it to ${hn}`):null),
+    hp&&(tg||canText)?shareBtn(false,'Send it another way'):shareBtn(true,'Send the backup')]).filter(Boolean))}
+  app.append(h('span',{class:'step'},'Job 2 of 2'),h('h1',{},'Save a backup'),
+    h('p',{class:'sub'},org.helper?`Keep a copy in case this phone ever loses it. Send it to ${hn} and ${hn} will keep it safe. Don't send it to the family.`:`Keep a copy in case this phone ever loses it. Text or email it to yourself. Don't send it to the family.`),
+    area,h('div',{class:'foot'},h('button',{onclick:vHome},'Back')));
+  showButtons();
 }
 
 function resultsText(){
@@ -344,8 +394,7 @@ function resultsText(){
   L.push(`${exName().toUpperCase()}: GIFT EXCHANGE RESULTS`,`Saved ${new Date().toLocaleString()}. Keep this private.`,'');
   if(org.ex.budget||org.ex.date)L.push([org.ex.budget&&`Spending limit: ${org.ex.budget}`,org.ex.date&&`Gift day: ${org.ex.date}`].filter(Boolean).join('   '),'');
   L.push('WHO IS BUYING FOR WHO');P.forEach(p=>L.push(`  ${p.name} is buying for ${pname(d.pairs[p.id],P)}`));L.push('');
-  L.push('SECRET CODES');P.forEach(p=>L.push(`  ${p.name}: ${d.codes[p.id]}`));L.push('');
-  L.push('FAMILY LINK (safe to share with everyone)',`  ${baseURL()}?${d.group}`,'');
+  L.push('PERSONAL LINKS (each one is private to that person)');P.forEach(p=>L.push(`  ${p.name}: ${personalLink(d,p)}`));L.push('');
   const w=P.filter(p=>d.wl[p.id]);
   if(w.length){L.push('WISHLISTS');w.forEach(p=>{const x=d.wl[p.id].data;L.push(`  ${p.name}:`);(x.items||[]).forEach(i=>L.push(`    - ${i.t}${i.u?' ('+i.u+')':''}`));if(x.sizes)L.push(`    Sizes: ${x.sizes}`);if(x.favs)L.push(`    Likes: ${x.favs}`);if(x.no)L.push(`    Please no: ${x.no}`)});L.push('')}
   L.push('ORGANIZER BACKUP LINK (private: reopens the organizer page)',`  ${backupLink()}`,'',"Next year: on the setup page, tap \"Load last year's results file\" and pick this file so nobody gets the same person again.");
@@ -365,119 +414,122 @@ function wlBody(data,seen){
 /* ================= FAMILY ================= */
 const ME=()=>LS.get('gx3.me',{}),WL=()=>LS.get('gx3.wl',{});
 const meKey=I=>I.d+':'+I.me.id;
-function parseGroup(frag){try{const g=unpack(frag.slice(2));return g&&g.v===2&&Array.isArray(g.p)?g:null}catch(e){return null}}
-
-function vGroup(frag){
-  const g=parseGroup(frag);
-  if(!g)return vMsg('This link looks cut off',"Ask the organizer to send it again. Make sure you tap the whole link.");
-  const mine=Object.values(ME()).filter(I=>I.d===g.d);
-  if(mine.length===1)return vReveal(mine[0]);
-  clear();
-  app.append(h('div',{class:'center',style:'margin-top:24px'},h('div',{class:'gift'},'🎁'),h('h1',{},g.ex),h('p',{class:'sub'},'Tap your name.')),
-    card(null,null,h('div',{class:'names'},g.p.map(e=>h('button',{onclick:()=>vCode(g,e,frag)},e[1])))));
+const ownKey=I=>'own:'+meKey(I);
+const revealedNow=new Set();/* reveal lasts for this page load only */
+function vPersonalLink(frag){
+  let g;try{g=unpack(frag.slice(2))}catch(e){g=null}
+  const m=g&&g.me,t=g&&g.to;
+  if(!g||g.v!==4||g.k!=='me'||!g.d||!m||!m.id||!m.name||!m.pub||!m.read||!m.sk||!t||!t.id||!t.name||!t.read||!t.pub)return vMsg('This link looks cut off',"Ask the organizer to send it again. Make sure you tap the whole link.");
+  const I={d:g.d,ex:g.ex,b:g.b,dt:g.dt,o:g.o,people:[{id:m.id,name:m.name,pub:m.pub},{id:t.id,name:t.name,pub:t.pub}],me:{id:m.id,name:m.name,pub:m.pub,read:m.read,sk:m.sk},to:{id:t.id,name:t.name,read:t.read,pub:t.pub},link:frag};
+  const all=ME(),k=meKey(I),old=all[k];
+  const store=()=>{I.at=Date.now();all[k]=I;LS.set('gx3.me',all);vReveal(I)};
+  const FK=['id','name','pub','read','sk'];
+  if(old&&old.to&&old.me&&(old.d!==I.d||FK.some(x=>old.me[x]!==I.me[x]||old.to[x]!==I.to[x]))){
+    clear();const slot=h('div');
+    app.append(h('h1',{},'You already have a link'),h('p',{class:'sub'},`This phone already has a link for ${I.me.name} in this exchange. Keep the one you have, or use this new one?`),
+      h('button',{class:'primary',onclick:()=>{old.at=Date.now();all[k]=old;LS.set('gx3.me',all);vReveal(old)}},'Keep what I have'),
+      h('button',{class:'wide',style:'margin-top:10px',onclick:()=>askInline(slot,`Use the new link for ${I.me.name} instead of the one on this phone?`,'Use this new one',store)},'Use this new one'),slot);
+    return}
+  store();
 }
 
-function vCode(g,e,frag){
-  clear();const[id,name,pub,salt,iv,ct]=e;
-  const inp=h('input',{type:'text',class:'code-in',placeholder:'MAPLE-COMET-482',autocomplete:'off',autocapitalize:'characters',spellcheck:'false','aria-label':'Secret code',onkeydown:ev=>{if(ev.key==='Enter')go()}});
-  const err=h('div'),btn=h('button',{class:'primary',onclick:go},'Unlock');
-  async function go(){err.replaceChildren();const c=normCode(inp.value);if(!c){err.append(h('div',{class:'err'},'Type in your code first.'));return}
-    btn.disabled=true;btn.textContent='Unlocking…';
-    try{const x=await unseal(await aesCode(c,b64u.dec(salt)),iv,ct,`g2|${g.d}|${id}`);const toE=g.p.find(q=>q[0]===x.to.id)||[];
-      const I={d:g.d,ex:g.ex,b:g.b,dt:g.dt,people:g.p.map(q=>({id:q[0],name:q[1],pub:q[2]})),me:{id,name,pub,read:x.me.read,sk:x.me.sk},to:{id:x.to.id,name:toE[1]||'?',read:x.to.read,pub:toE[2]},group:frag};
-      const m=ME();m[meKey(I)]=I;LS.set('gx3.me',m);vReveal(I)}
-    catch(_){btn.disabled=false;btn.textContent='Unlock';err.append(h('div',{class:'err'},`That code doesn't match ${name}. Check the private text from ${g.o||'the organizer'}, and make sure you tapped your own name.`))}}
-  app.append(h('div',{class:'center',style:'margin-top:24px'},h('div',{class:'gift'},'🔑'),h('h1',{},`Hi ${name}`),h('p',{class:'sub'},`Type in the secret code ${g.o||'the organizer'} texted you. Capital letters and dashes don't matter.`)),
-    card(null,null,inp,err,h('div',{style:'margin-top:14px'},btn)),
-    h('div',{class:'foot'},h('button',{onclick:()=>vGroup(frag)},'Not you? Go back')));
-  setTimeout(()=>inp.focus(),50);
-}
-
-function vReveal(I){
+function vReveal(I,arrived){
   clear();
-  if(currentFrag()!==I.group)history.replaceState(null,'',baseURL()+'?'+I.group);
+  if(currentFrag())history.replaceState(null,'',baseURL());
   app.append(h('h1',{},`Hi ${I.me.name}`),h('p',{class:'sub'},I.ex));
-  const rv=LS.get('gx3.revealed',{}),key=meKey(I);
+  const key=meKey(I);
   const nameEl=h('div',{class:'big center'},I.to.name);
   const details=h('div',{},h('p',{class:'center muted',style:'margin:0'},"You're buying a gift for"),nameEl,(I.b||I.dt)?h('p',{class:'center muted',style:'margin:0'},[I.b&&`Spending limit ${I.b}`,I.dt].filter(Boolean).join(' · ')):null);
-  const wk=I.d+':'+I.to.id,entry=WL()[wk];
-  const wlCard=card(`${I.to.name}'s wishlist`,null,
-    entry?[h('p',{class:'muted small'},'Updated '+fmtTs(entry.ts)),wlBody(entry.data,entry.seen)]:h('p',{class:'muted'},`Nothing yet. If ${I.to.name} adds a wishlist, they'll post a link in the family text. Tap it on this phone and it will show up here.`));
-  if(!rv[key]){
-    wlCard.hidden=true;
-    const btn=h('button',{class:'reveal',onclick:()=>{rv[key]=1;LS.set('gx3.revealed',rv);btn.replaceWith(details);wlCard.hidden=false;
+  const wk=I.d+':'+I.to.id,wlSlot=h('div');
+  /* the recipient's name and list are only built once the person has tapped */
+  const showWl=()=>{const entry=WL()[wk];
+    const c=card(`${I.to.name}'s wishlist`,null,
+      entry?[h('p',{class:'muted small'},'Updated '+fmtTs(entry.ts)),wlBody(entry.data,entry.seen)]:h('p',{class:'muted'},`Nothing yet. If ${I.to.name} adds a wishlist, they'll post a link in the family group chat. Tap it on this phone and it will show up here.`));
+    wlSlot.replaceChildren(c);
+    if(entry){const all=WL();all[wk]={...entry,seen:(entry.data.items||[]).map(i=>i.t)};LS.set('gx3.wl',all)}
+    return c};
+  const goScroll=c=>{if(arrived)setTimeout(()=>c.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'}),0)};
+  if(arrived){if(!revealedNow.has(key)){toast('A wishlist arrived');app.insertBefore(h('div',{class:'good arrivednote',style:'margin:0 0 16px'},"Their wishlist is here. Tap to see who you got, then scroll down."),app.children[2])}else toast(`${I.to.name}'s wishlist arrived`)}
+  if(!revealedNow.has(key)){
+    const btn=h('button',{class:'reveal',onclick:()=>{revealedNow.add(key);app.querySelector('.arrivednote')?.remove();btn.replaceWith(details);goScroll(showWl());
       if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
       const A='ABCDEFGHIJKLMNOPQRSTUVWXYZ',n=I.to.name;let f=0;const t=setInterval(()=>{f++;nameEl.textContent=f>14?n:Array.from(n,c=>c===' '?' ':A[randInt(26)]).join('');if(f>14)clearInterval(t)},60)}},
       h('div',{class:'gift'},'🎁'),h('div',{style:'font-weight:700;font-size:20px;margin-top:8px'},'Tap to see who you got'),h('div',{class:'muted small'},'Make sure no one is peeking'));
     app.append(card(null,null,btn));
-  }else{app.append(card(null,null,details));if(entry){entry.seen=(entry.data.items||[]).map(i=>i.t);const all=WL();all[wk]=entry;LS.set('gx3.wl',all)}}
-  app.append(wlCard);
-  app.append(card('Your wishlist',"Help whoever drew you. Only they can read it.",h('button',{class:'primary',onclick:()=>vEditor(I)},WL()[key]?'Change my wishlist':'Make my wishlist')));
-  app.append(h('div',{class:'foot muted small'},h('button',{class:'linkbtn',onclick:()=>{const m=ME();delete m[key];LS.set('gx3.me',m);vGroup(I.group)}},`Not ${I.me.name}? Tap here`)));
+  }else{app.append(card(null,null,details));goScroll(showWl())}
+  app.append(wlSlot);
+  app.append(card('Your wishlist',"Help whoever drew you. Only they can read it.",h('button',{class:'primary',onclick:()=>vEditor(I)},WL()[ownKey(I)]?'Change my wishlist':'Make my wishlist')));
+  if(org.draw)app.append(h('div',{class:'foot'},h('button',{onclick:()=>{history.replaceState(null,'',baseURL());vHome()}},'Back to my jobs')));
 }
 
+const shareText=(I,link)=>`🎁 ${I.me.name}'s wishlist is ready! (Only the person who drew ${I.me.name} can open it.)\n${link}`;
 function vEditor(I){
   clear();const DK='gx3.draft',all=LS.get(DK,{}),key=meKey(I);
   const data=all[key]||{items:[{t:'',u:''}],sizes:'',favs:'',no:''};
+  if(!Array.isArray(data.items)||!data.items.length)data.items=[{t:'',u:''}];
+  const persist=()=>{const a=LS.get(DK,{});a[key]=data;LS.set(DK,a)};
   const list=h('div',{});
   function rows(){list.replaceChildren(...data.items.map((it,i)=>h('div',{class:'item',style:'display:block'},
-    h('div',{class:'row'},h('input',{type:'text',value:it.t,placeholder:'Gift idea',maxlength:'200',oninput:e=>it.t=e.target.value}),h('button',{class:'icon','aria-label':'Remove idea',onclick:()=>{data.items.splice(i,1);if(!data.items.length)data.items.push({t:'',u:''});rows()}},'✕')),
-    h('input',{type:'url',value:it.u,placeholder:'Web link (optional)',maxlength:'500',style:'margin-top:6px',oninput:e=>it.u=e.target.value}))))}
+    h('div',{class:'row'},h('input',{type:'text',value:it.t,placeholder:'Gift idea',maxlength:'120',oninput:e=>{it.t=e.target.value;persist()}}),h('button',{class:'icon','aria-label':'Remove idea',onclick:()=>{data.items.splice(i,1);if(!data.items.length)data.items.push({t:'',u:''});persist();rows()}},'✕')),
+    h('input',{type:'url',value:it.u,placeholder:'Web link (optional)',maxlength:'300',style:'margin-top:6px',oninput:e=>{it.u=e.target.value;persist()}}))))}
   rows();
-  const ta=(k,label,ph)=>h('label',{class:'field'},h('span',{},label),h('textarea',{placeholder:ph,maxlength:'300',oninput:e=>data[k]=e.target.value},data[k]));
+  const ta=(k,label,ph)=>h('label',{class:'field'},h('span',{},label),h('textarea',{placeholder:ph,maxlength:'200',oninput:e=>{data[k]=e.target.value;persist()}},data[k]));
   const err=h('div');
   app.append(h('h1',{},'My wishlist'),h('p',{class:'sub'},'Only the person who drew you can read it.'),
-    card('Gift ideas',null,list,h('button',{class:'wide',style:'margin-top:8px',onclick:()=>{if(data.items.length>=30)return;data.items.push({t:'',u:''});rows()}},'+ Add another idea')),
-    card('Helpful details',null,ta('sizes','Sizes','Shirt M, shoe 9'),ta('favs','Things you like','Green, coffee, hiking'),ta('no','Please no','Candles, mugs')),err,
+    card('Gift ideas',null,list,h('button',{class:'wide',style:'margin-top:8px',onclick:()=>{if(data.items.length>=15){toast('15 ideas is the most you can add.');return}data.items.push({t:'',u:''});persist();rows()}},'+ Add another idea')),
+    card('Helpful details',null,ta('sizes','Sizes','Shirt M, shoe 9'),ta('favs','Things you like','Green, coffee, hiking'),ta('no','Please no','Socks, mugs')),err,
     h('button',{class:'primary',onclick:save},'Save my wishlist'),
     h('div',{class:'foot'},h('button',{onclick:()=>vReveal(I)},'Back')));
   async function save(){
     err.replaceChildren();
-    const clean={items:data.items.map(i=>({t:(i.t||'').trim().slice(0,200),u:(i.u||'').trim().slice(0,500)})).filter(i=>i.t),sizes:(data.sizes||'').trim(),favs:(data.favs||'').trim(),no:(data.no||'').trim()};
-    if(!clean.items.length&&!clean.sizes&&!clean.favs){err.append(h('div',{class:'err',style:'margin-bottom:12px'},'Add at least one idea first.'));return}
-    for(const i of clean.items)if(i.u&&!safeURL(i.u)){err.append(h('div',{class:'err',style:'margin-bottom:12px'},`"${i.u}" isn't a full web link. It should start with https://`));return}
-    all[key]=data;LS.set(DK,all);
+    const clean={items:data.items.map(i=>({t:(i.t||'').trim().slice(0,120),u:(i.u||'').trim().slice(0,300)})).filter(i=>i.t).slice(0,15),sizes:(data.sizes||'').trim().slice(0,200),favs:(data.favs||'').trim().slice(0,200),no:(data.no||'').trim().slice(0,200)};
+    if(!clean.items.length&&!clean.sizes&&!clean.favs&&!clean.no){err.append(h('div',{class:'err',style:'margin-bottom:12px'},'Add at least one idea or detail first.'));return}
+    for(const i of clean.items)if(i.u&&!safeURL(i.u)){err.append(h('div',{class:'err',style:'margin-bottom:12px'},`"${i.u}" isn't a full web link. It should start with https:// or http://`));return}
+    persist();
     const ts=Date.now(),ts36=ts.toString(36),aad=`w2|${I.d}|${I.me.id}|${ts36}`;
     const[iv,ct]=await seal(await aesRaw(b64u.dec(I.me.read)),clean,aad);
     const sig=await signWith(I.me.sk,I.me.pub,`${aad}|${iv}|${ct}`);
     const link=`${baseURL()}?w=2.${I.d}.${I.me.id}.${ts36}.${iv}.${ct}.${sig}`;
-    const w=WL();w[key]={ts,data:clean,seen:null};LS.set('gx3.wl',w);
+    if(link.length>6000||shareText(I,link).length>3900){const over=Math.ceil(Math.max(shareText(I,link).length-3900,link.length-6000)/1.4);err.append(h('div',{class:'err',style:'margin-bottom:12px'},`Your wishlist is too long to share by about ${over} letters. Web links take the most room, so remove a few of those first.`));return}
+    const w=WL();w[ownKey(I)]={ts,data:clean,seen:null};LS.set('gx3.wl',w);
     vShared(I,link);
   }
 }
 
 function vShared(I,link){
-  clear();const text=`🎁 ${I.me.name}'s wishlist is ready! (Only the person who drew ${I.me.name} can open it.)\n${link}`;
+  clear();const text=shareText(I,link);
   const after=h('div');
-  app.append(h('div',{class:'center',style:'margin-top:24px'},h('div',{class:'gift'},'🔒'),h('h1',{},'Saved and locked'),h('p',{class:'sub'},"Last step: post it in the family group text. Everyone will see the message, but only the person who drew you can open it.")),
-    h('button',{class:'primary',onclick:async()=>{const r=await share(text);if(r==='copied')after.replaceChildren(h('div',{class:'good'},'Copied! Open the family group text, press and hold in the message box, tap Paste, then send.'))}},'Post it to the family'),after,
+  app.append(h('div',{class:'center',style:'margin-top:24px'},h('div',{class:'gift'},'🔒'),h('h1',{},'Saved and locked'),h('p',{class:'sub'},"Last step: post it in the family group chat. Everyone will see the message, but only the person who drew you can open it.")),
+    h('button',{class:'primary',onclick:async()=>{const r=await share(text);if(r==='copied')after.replaceChildren(h('div',{class:'good'},'Copied! Open the family group chat, press and hold in the message box, tap Paste, then send.'));else if(r==='shared')after.replaceChildren(h('div',{class:'good'},'Posted. Only the person who drew you can open it.'))}},'Post it to the family'),after,
     h('p',{class:'muted center',style:'margin-top:14px'},'Want to change it later? Change it and post it again. The newest one always wins.'),
     h('div',{class:'foot'},h('button',{onclick:()=>vReveal(I)},'Back to my page')));
 }
 
 async function vWishlistLink(frag){
-  const p=frag.slice(2).split('.');
-  if(p.length!==7||p[0]!=='2')return vMsg('This wishlist link looks cut off','Ask whoever posted it to send it again.');
+  const p=frag.slice(2).replace(/[^A-Za-z0-9_-]+$/,'').split('.');
+  if(p.length!==7||p[0]!=='2')return vMsg("This wishlist can't be opened",'This wishlist link looks cut off or changed. Ask for it to be posted again.');
   const[,d,o,ts36,iv,ct,sig]=p,aad=`w2|${d}|${o}|${ts36}`,ts=parseInt(ts36,36);
   const open=async(read,pub)=>{if(!pub||!await verifyWith(pub,sig,`${aad}|${iv}|${ct}`))throw new Error('sig');return unseal(await aesRaw(b64u.dec(read)),iv,ct,aad)};
-  const bad=()=>vMsg("This wishlist couldn't be checked","It may have been changed after it was posted. Ask for it to be sent again.");
+  const bad=()=>vMsg("This wishlist can't be opened","This wishlist link looks cut off or changed. Ask for it to be posted again.");
   const mine=Object.values(ME()).filter(I=>I.d===d);
   const giver=mine.find(I=>I.to.id===o);
   if(giver){try{const data=await open(giver.to.read,giver.to.pub);const all=WL(),k=d+':'+o,cur=all[k];
-      if(!cur||cur.ts<ts){all[k]={ts,data,seen:cur?cur.seen:null};LS.set('gx3.wl',all)}else if(cur.ts>ts)toast('You already have a newer version of this wishlist');
-      return vReveal(giver)}catch(e){return bad()}}
+      if(!cur||cur.ts<ts){all[k]={ts,data,seen:cur?cur.seen:[]};LS.set('gx3.wl',all)}const fresh=!cur||cur.ts<ts;
+      vReveal(giver,fresh);if(cur&&cur.ts>ts)toast('You already have a newer version of this wishlist');else if(cur&&cur.ts===ts)toast('You already have this wishlist');return}catch(e){return bad()}}
   const owner=mine.find(I=>I.me.id===o);
   if(owner){try{const data=await open(owner.me.read,owner.me.pub);clear();
-      app.append(h('h1',{},'This is your wishlist'),h('p',{class:'sub'},'Only the person who drew you can read it.'),card(null,null,wlBody(data,null)),h('button',{class:'primary',onclick:()=>vReveal(owner)},'Go to my page'));return}catch(e){return bad()}}
+      app.append(h('h1',{},'This is your wishlist'),h('p',{class:'sub'},'This is what your giver will see.'),card(null,null,wlBody(data,null)),h('button',{class:'primary',onclick:()=>vReveal(owner)},'Go to my page'));return}catch(e){return bad()}}
   if(org.draw&&org.draw.id===d&&org.draw.read[o]){
     try{const data=await open(org.draw.read[o],org.draw.pub[o]);const cur=org.draw.wl[o];if(!cur||cur.ts<ts){org.draw.wl[o]={ts,data};saveOrg()}
       clear();app.append(h('h1',{},`${pname(o,org.draw.people)}'s wishlist`),h('p',{class:'sub'},'Organizer view · updated '+fmtTs(ts)),card(null,null,wlBody(data,null)),h('button',{class:'primary',onclick:()=>{history.replaceState(null,'',baseURL());vHome()}},'Back to my jobs'));return}
     catch(e){return bad()}}
-  const who=mine[0]&&(mine[0].people.find(q=>q.id===o)||{}).name;
-  vMsg('This wishlist is locked',`Only the person who drew ${who||'this person'} can open it.${mine.length?'':" If that's you, first open the family link from the group text and type in your code. Then tap this wishlist link again."}`);
+  vMsg('This wishlist is locked',`Only the person who drew them can open it. If that's you, tap the message the organizer sent you first, then tap this link again.`);
 }
 
-function vMsg(title,body,...extra){clear();app.append(h('div',{class:'center',style:'margin-top:48px'},h('div',{class:'gift'},'🔒'),h('h1',{},title),h('p',{class:'sub'},body),...extra))}
+function vMsg(title,body,...extra){clear();
+  const ids=Object.values(ME()).filter(I=>I&&I.me&&I.to).sort((a,b)=>(b.at||0)-(a.at||0));
+  const way=org.draw?h('button',{class:'primary',style:'margin-top:16px',onclick:()=>{history.replaceState(null,'',baseURL());vHome()}},'Back to my jobs'):ids.length?h('button',{class:'primary',style:'margin-top:16px',onclick:()=>vReveal(ids[0])},'Back to my page'):null;
+  app.append(h('div',{class:'center',style:'margin-top:48px'},h('div',{class:'gift'},'🔒'),h('h1',{},title),h('p',{class:'sub'},body),...extra,way))}
 
 /* ================= links that open the organizer side ================= */
 function vSetupLink(frag){
@@ -488,29 +540,35 @@ function vSetupLink(frag){
   if(!org.draw)return goWelcome();
   if(org.sid===s.sid&&org.setupHash===hash){history.replaceState(null,'',baseURL());return vHome()}
   clear();const slot=h('div');
-  app.append(h('h1',{},'You already drew names'),h('p',{class:'sub'},`This is a new or changed setup${s.hp?` from ${s.hp}`:''}. Using it means drawing names again and sending everyone new codes.`),
+  app.append(h('h1',{},'You already drew names'),h('p',{class:'sub'},`${s.hp||'Someone'} sent a new list. Using it means drawing names again and sending everyone new links.`),
     h('button',{class:'primary',onclick:()=>{history.replaceState(null,'',baseURL());vHome()}},'Keep my current draw'),
-    h('button',{class:'wide',style:'margin-top:10px',onclick:()=>askInline(slot,'Throw away the current draw and use the new setup?','Yes, use the new one',goWelcome)},'Use the new setup'),slot);
+    h('button',{class:'wide',style:'margin-top:10px',onclick:()=>askInline(slot,'Use the new list? You can still change your mind before you draw.','Yes, use the new one',goWelcome)},'Use the new list'),slot);
 }
 async function vBackupLink(frag){
   let b;try{b=unpack(frag.slice(2))}catch(e){b=null}
   if(!b||b.k!=='backup'||!b.d)return vMsg('This backup link looks cut off','Make sure you tap the whole link.');
-  const restore=async()=>{await restoreBackup(b);history.replaceState(null,'',baseURL());vHome();toast('Organizer page restored')};
-  if(!org.draw)return restore();
-  if(org.draw.id===b.d.id){history.replaceState(null,'',baseURL());return vHome()}
+  const restore=async()=>{restoreBackup(b);history.replaceState(null,'',baseURL());vHome();toast('Organizer page restored')};
+  if(org.draw&&org.draw.id===b.d.id){history.replaceState(null,'',baseURL());return vHome()}
+  const bName=((b.ex&&b.ex.name)||'').trim()||'Gift exchange';
   clear();const slot=h('div');
-  app.append(h('h1',{},'Restore this backup?'),h('p',{class:'sub'},`This phone already has a different draw (${exName()}).`),
-    h('button',{class:'primary',onclick:()=>askInline(slot,'Replace the draw on this phone with the backup?','Yes, restore',restore)},'Restore the backup'),slot,
-    h('div',{class:'foot'},h('button',{onclick:()=>{history.replaceState(null,'',baseURL());vHome()}},'Keep what I have')));
+  const leave=()=>{history.replaceState(null,'',baseURL());if(org.draw||org.fromLink||org.ready||Object.keys(ME()).length)return route();vMsg('Nothing changed','Tap the backup link again whenever you want to bring the organizer page back.')};
+  app.append(h('h1',{},'Restore this backup?'),
+    h('p',{class:'sub'},org.draw?`This phone already has a different draw (${exName()}).`:`This brings back the organizer page for ${bName}.`),slot,
+    h('div',{class:'foot'},h('button',{onclick:leave},org.draw?'Keep what I have':'Not now')));
+  askInline(slot,org.draw?`Replace the draw made ${fmtTs(org.draw.created)} on this phone with the backup from ${fmtTs(b.d.created)}?`:`Restore the organizer page for ${bName}?`,'Yes, restore',restore);
 }
 
 function route(){
   const f=currentFrag();
-  if(f.startsWith('g='))return vGroup(f);
+  if(f.startsWith('g='))return vMsg('This link is from an older version of the page','Ask the organizer to send you your own link.');
+  if(f.startsWith('m='))return vPersonalLink(f);
   if(f.startsWith('w='))return vWishlistLink(f);
   if(f.startsWith('s='))return vSetupLink(f);
   if(f.startsWith('o='))return vBackupLink(f);
   if(org.draw)return vHome();
+  if((org.fromLink||org.ready)&&org.people.length)return vWelcome();
+  const ids=Object.values(ME()).filter(I=>I&&I.me&&I.to).sort((a,b)=>(b.at||0)-(a.at||0));
+  if(ids.length)return vReveal(ids[0]);
   return vSetup();
 }
 addEventListener('hashchange',route);
