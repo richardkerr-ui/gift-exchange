@@ -7,10 +7,11 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
 <title>Gift Exchange</title>
 <style>
-:root{--bg:#f6f3ec;--card:#fff;--ink:#1c2520;--muted:#4f5c55;--line:#ddd6c9;--accent:#1f6b4a;--on-accent:#fff;--berry:#a8233a;--soft:#e4f1e9;--warn-bg:#fdf3e0;--warn:#6e4305;--err:#a8233a;--err-bg:#fbe9ec}
-@media (prefers-color-scheme:dark){:root{--bg:#111613;--card:#1a211d;--ink:#f1f4f2;--muted:#b0bfb6;--line:#33403a;--accent:#4cb585;--on-accent:#08110c;--berry:#ef7489;--soft:#1f2d25;--warn-bg:#382a10;--warn:#f2c675;--err:#f39aaa;--err-bg:#3a1a20}}
+:root{--bg:#f8f1e4;--card:#fffdf8;--ink:#1b2a21;--muted:#4a5a50;--line:#e3d5bf;--accent:#176b3a;--on-accent:#fff;--berry:#b5202e;--soft:#e4f1e7;--warn-bg:#fbefd2;--warn:#6b4a05;--err:#b5202e;--err-bg:#fbe5e7;--stripe:#fffdf8}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1a14;--card:#17241c;--ink:#f3efe6;--muted:#b4c0b7;--line:#2f4237;--accent:#5cc488;--on-accent:#07140c;--berry:#ff7b86;--soft:#1e3328;--warn-bg:#3a2c0f;--warn:#f4cf7a;--err:#ff9aa5;--err-bg:#3d1b22;--stripe:#f3efe6}}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
+body::before{content:'';display:block;height:6px;background:repeating-linear-gradient(135deg,var(--berry) 0 14px,var(--stripe) 14px 20px,var(--accent) 20px 34px,var(--stripe) 34px 40px)}
 body{margin:0;background:var(--bg);color:var(--ink);font:18px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:560px;margin:0 auto;padding:20px 16px 80px}
 h1,h2,.big{font-family:Georgia,"Times New Roman",serif;font-weight:600}
@@ -42,7 +43,7 @@ button:hover,.btn:hover{border-color:var(--muted)}
 .center{text-align:center}
 .big{font-size:42px;margin:4px 0;color:var(--berry)}
 .code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:26px;font-weight:700;text-align:center;letter-spacing:1px;background:var(--bg);border-radius:12px;padding:14px;margin:0 0 14px;word-break:break-word}
-.reveal{border:2px dashed var(--line);border-radius:18px;padding:40px 12px;text-align:center;cursor:pointer;background:var(--card);width:100%;display:block}
+.reveal{border:2px dashed var(--berry);border-radius:18px;padding:40px 12px;text-align:center;cursor:pointer;background:var(--card);width:100%;display:block}
 .gift{font-size:48px;line-height:1}
 .quote{white-space:pre-wrap;word-break:break-word;font-size:16px;background:var(--bg);border-radius:12px;padding:12px;margin:0 0 14px}
 .names{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
