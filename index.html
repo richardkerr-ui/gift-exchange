@@ -84,7 +84,7 @@ const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}
 const baseURL=()=>location.href.split('#')[0];
 function h(tag,props,...kids){const el=document.createElement(tag);for(const[k,v]of Object.entries(props||{})){if(v==null||v===false)continue;if(k==='class')el.className=v;else if(k.startsWith('on'))el.addEventListener(k.slice(2),v);else if(k==='value')el.value=v;else el.setAttribute(k,v===true?'':v)}for(const c of kids.flat(9)){if(c==null||c===false)continue;el.append(c instanceof Node?c:document.createTextNode(String(c)))}return el}
 const app=document.getElementById('app');
-function clear(){app.replaceChildren();window.scrollTo(0,0);return app}
+function clear(){app.replaceChildren();window.scrollTo(0,0);lastView='';return app}
 const card=(title,help,...kids)=>h('section',{class:'card'},title?h('h2',{},title):null,help?h('p',{class:'help'},help):null,...kids);
 let toastT;function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2600)}
 async function copy(text,label){try{await navigator.clipboard.writeText(text)}catch(e){const ta=h('textarea',{},text);document.body.append(ta);ta.select();try{document.execCommand('copy')}catch(_){}ta.remove()}toast(label||'Copied')}
@@ -137,7 +137,7 @@ function setupPayload(){const idx=id=>org.people.findIndex(p=>p.id===id);
   return{v:3,k:'setup',sid:org.sid,ex:org.ex,o:org.orgName,hp:org.helper,hph:org.helperPhone,p:org.people.map(p=>[p.name,p.phone||'']),a:org.apart.map(([a,b])=>[idx(a),idx(b)]),l:org.lastYear.map(([a,b])=>[idx(a),idx(b)])}}
 const setupLink=()=>baseURL()+'#s='+pack(setupPayload());
 function applySetup(s){const people=s.p.map(([name,phone])=>({id:b64u.enc(rnd(6)),name,phone}));
-  org={...newOrg(),sid:s.sid,setupHash:JSON.stringify(s),ex:s.ex||{name:'',budget:'',date:''},orgName:s.o||'',helper:s.hp||'',helperPhone:s.hph||'',people,
+  org={...newOrg(),fromLink:true,sid:s.sid,setupHash:JSON.stringify(s),ex:s.ex||{name:'',budget:'',date:''},orgName:s.o||'',helper:s.hp||'',helperPhone:s.hph||'',people,
     apart:(s.a||[]).map(([i,j])=>[people[i]?.id,people[j]?.id]).filter(x=>x[0]&&x[1]),lastYear:(s.l||[]).map(([i,j])=>[people[i]?.id,people[j]?.id]).filter(x=>x[0]&&x[1])};saveOrg()}
 
 /* ---------- backup link (organizer's safety copy) ---------- */
@@ -151,11 +151,14 @@ async function restoreBackup(b){
 }
 
 /* ================= HELPER: set it up ================= */
-function vSetup(errMsg){
-  clear();
+let lastView='';
+function vSetup(errMsg,note){
+  const keepY=lastView==='setup'?window.scrollY:0;
+  clear();lastView='setup';
+  requestAnimationFrame(()=>window.scrollTo(0,errMsg?document.body.scrollHeight:keepY));
   app.append(h('h1',{},'Set up a gift exchange'),h('p',{class:'sub'},"Fill this in, then send it to whoever is running the draw. All they have to do is check the names and tap one button."));
   const f=(label,obj,key,ph,type)=>h('label',{class:'field'},h('span',{},label),h('input',{type:type||'text',value:obj[key]||'',placeholder:ph,maxlength:'60',oninput:e=>{obj[key]=e.target.value;saveOrg()}}));
-  app.append(card('The exchange',null,f('Name','ex','name','Christmas 2026'),h('div',{class:'row2'},f('Spending limit','ex','budget','$30'),f('Gift day','ex','date','Dec 25'))));
+  app.append(card('The exchange',null,f('Name',org.ex,'name','Christmas 2026'),h('div',{class:'row2'},f('Spending limit',org.ex,'budget','$30'),f('Gift day',org.ex,'date','Dec 25'))));
   app.append(card('Who is running it',"The organizer draws the names and sends everyone their code. You're the helper they can ask if they get stuck.",
     f("Organizer's name",org,'orgName','Dad'),h('div',{class:'row2'},f('Your name',org,'helper','Richard'),f('Your phone (optional)',org,'helperPhone','555 123 4567','tel'))));
 
@@ -173,10 +176,11 @@ function vSetup(errMsg){
     if(!a||!b){apartErr.append(h('div',{class:'err'},'Choose two people first.'));return}
     if(a===b){apartErr.append(h('div',{class:'err'},'Choose two different people.'));return}
     if(isApart(a,b)){apartErr.append(h('div',{class:'err'},`${pname(a)} and ${pname(b)} are already kept apart.`));return}
-    org.apart.push([a,b]);saveOrg();vSetup();toast(`${pname(a)} and ${pname(b)} won't get each other`)}
-  app.append(card('Keep people apart',"Pick two people who shouldn't get each other, like a married couple. Add as many pairs as you like.",
+    org.apart.push([a,b]);saveOrg();vSetup(null,`Added: ${pname(a)} and ${pname(b)} won't get each other. Pick the next pair if there is one.`)}
+  app.append(card('Keep people apart',"Pick two people who shouldn't get each other, like a married couple. Add one pair at a time, as many as you like.",
+    note?h('div',{class:'good',style:'margin:0 0 12px'},note):null,
     org.apart.length?h('div',{class:'list'},org.apart.map(([a,b])=>h('div',{class:'item'},h('span',{},`${pname(a)} and ${pname(b)}`),h('button',{class:'icon','aria-label':'Remove',onclick:()=>{org.apart=org.apart.filter(([x,y])=>!(x===a&&y===b));saveOrg();vSetup()}},'✕')))):null,
-    org.people.length>=2?[h('div',{class:'row2'},s1,s2),h('button',{class:'wide',style:'margin-top:8px',onclick:addApart},'Keep these two apart'),apartErr]:h('p',{class:'muted'},'Add at least two people first.')));
+    org.people.length>=2?[h('p',{style:'margin:12px 0 6px'},h('b',{},org.apart.length?'Add another pair':'Add a pair')),h('div',{class:'row2'},s1,s2),h('button',{class:'wide',style:'margin-top:8px',onclick:addApart},'+ Add this pair'),apartErr]:h('p',{class:'muted'},'Add at least two people first.')));
 
   const pasteIn=h('input',{type:'text',placeholder:"Paste last year's backup link"});
   app.append(card('Avoid repeats from last year',"Nobody gets the same person as last year. Use last year's results file or backup link.",
@@ -231,7 +235,8 @@ function vWelcome(){
     catch(e){console.error(e);go.disabled=false;go.textContent='Everything looks right. Draw names!';err.append(h('div',{class:'err'},'Something went wrong. Try again.'))}}},'Everything looks right. Draw names!');
   app.append(go,err);
   app.append(h('p',{class:'muted center',style:'margin-top:16px'},`Something wrong? ${org.helper?`Ask ${org.helper} to fix it and send you a new link.`:'Fix it before drawing.'}`),
-    org.helperPhone?h('div',{class:'center'},h('a',{class:'btn',href:smsHref(org.helperPhone,`Hi ${org.helper}, something needs fixing in the gift exchange: `)},`Text ${org.helper}`)):null);
+    org.helperPhone?h('div',{class:'center'},h('a',{class:'btn',href:smsHref(org.helperPhone,`Hi ${org.helper}, something needs fixing in the gift exchange: `)},`Text ${org.helper}`)):null,
+    !org.fromLink?h('div',{class:'foot'},h('button',{onclick:()=>vSetup()},'Back to setup')):null);
 }
 
 async function buildGroup(d){
