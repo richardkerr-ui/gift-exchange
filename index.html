@@ -81,9 +81,11 @@ const rnd=n=>crypto.getRandomValues(new Uint8Array(n));
 function randInt(n){const lim=Math.floor(0x100000000/n)*n;const u=new Uint32Array(1);do crypto.getRandomValues(u);while(u[0]>=lim);return u[0]%n}
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=randInt(i+1);[a[i],a[j]]=[a[j],a[i]]}return a}
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
-const baseURL=()=>location.href.split('#')[0];
+const baseURL=()=>location.origin+location.pathname;
 function h(tag,props,...kids){const el=document.createElement(tag);for(const[k,v]of Object.entries(props||{})){if(v==null||v===false)continue;if(k==='class')el.className=v;else if(k.startsWith('on'))el.addEventListener(k.slice(2),v);else if(k==='value')el.value=v;else el.setAttribute(k,v===true?'':v)}for(const c of kids.flat(9)){if(c==null||c===false)continue;el.append(c instanceof Node?c:document.createTextNode(String(c)))}return el}
 const app=document.getElementById('app');
+/* links carry their data after ? (Messages link previews drop anything after #); older # links still work */
+const currentFrag=()=>location.search.slice(1)||location.hash.slice(1);
 function clear(){app.replaceChildren();window.scrollTo(0,0);lastView='';return app}
 const card=(title,help,...kids)=>h('section',{class:'card'},title?h('h2',{},title):null,help?h('p',{class:'help'},help):null,...kids);
 let toastT;function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2600)}
@@ -135,14 +137,14 @@ const helperName=()=>org.helper||'whoever set this up';
 /* ---------- setup link (helper → organizer) ---------- */
 function setupPayload(){const idx=id=>org.people.findIndex(p=>p.id===id);
   return{v:3,k:'setup',sid:org.sid,ex:org.ex,o:org.orgName,hp:org.helper,hph:org.helperPhone,p:org.people.map(p=>[p.name,p.phone||'']),a:org.apart.map(([a,b])=>[idx(a),idx(b)]),l:org.lastYear.map(([a,b])=>[idx(a),idx(b)])}}
-const setupLink=()=>baseURL()+'#s='+pack(setupPayload());
+const setupLink=()=>baseURL()+'?s='+pack(setupPayload());
 function applySetup(s){const people=s.p.map(([name,phone])=>({id:b64u.enc(rnd(6)),name,phone}));
   org={...newOrg(),fromLink:true,sid:s.sid,setupHash:JSON.stringify(s),ex:s.ex||{name:'',budget:'',date:''},orgName:s.o||'',helper:s.hp||'',helperPhone:s.hph||'',people,
     apart:(s.a||[]).map(([i,j])=>[people[i]?.id,people[j]?.id]).filter(x=>x[0]&&x[1]),lastYear:(s.l||[]).map(([i,j])=>[people[i]?.id,people[j]?.id]).filter(x=>x[0]&&x[1])};saveOrg()}
 
 /* ---------- backup link (organizer's safety copy) ---------- */
 function backupLink(){const d=org.draw;
-  return baseURL()+'#o='+pack({v:3,k:'backup',sid:org.sid,setupHash:org.setupHash,ex:org.ex,o:org.orgName,hp:org.helper,hph:org.helperPhone,people:org.people,apart:org.apart,lastYear:org.lastYear,
+  return baseURL()+'?o='+pack({v:3,k:'backup',sid:org.sid,setupHash:org.setupHash,ex:org.ex,o:org.orgName,hp:org.helper,hph:org.helperPhone,people:org.people,apart:org.apart,lastYear:org.lastYear,
     d:{id:d.id,created:d.created,people:d.people,pairs:d.pairs,codes:d.codes,read:d.read,sk:d.sk,pub:d.pub,sentGroup:d.sentGroup,sentCode:d.sentCode}})}
 async function restoreBackup(b){
   org={...newOrg(),sid:b.sid,setupHash:b.setupHash||'',ex:b.ex,orgName:b.o||'',helper:b.hp||'',helperPhone:b.hph||'',people:b.people,apart:b.apart||[],lastYear:b.lastYear||[],
@@ -199,7 +201,7 @@ function vSetup(errMsg,note){
 
 function parseSaved(text){
   const t=(text||'').trim();
-  try{const i=t.indexOf('#o=');if(i>=0){const m=t.slice(i+3).match(/^[A-Za-z0-9_-]+/);return unpack(m[0])}}catch(e){}
+  try{let i=t.indexOf('?o=');if(i<0)i=t.indexOf('#o=');if(i>=0){const m=t.slice(i+3).match(/^[A-Za-z0-9_-]+/);return unpack(m[0])}}catch(e){}
   try{if(t.startsWith('{'))return JSON.parse(t)}catch(e){}
   try{const i=t.indexOf('----- page data below');if(i>=0){const rest=t.slice(t.indexOf('\n',i)+1).trim();return unpack(rest)}}catch(e){}
   return null}
@@ -295,7 +297,7 @@ function vHome(){
 }
 
 function vSendFamily(){
-  clear();const d=org.draw,link=baseURL()+'#'+d.group;
+  clear();const d=org.draw,link=baseURL()+'?'+d.group;
   const msg=`🎄 ${exName()} gift exchange!\nTap this link, tap your name, then type in the secret code I'm texting you separately.\n${link}`;
   const after=h('div');
   app.append(h('span',{class:'step'},'Job 1 of 3'),h('h1',{},'Send the family link'),h('p',{class:'sub'},"This goes in your family group text. It's safe for everyone to see because nobody can open their result without their own code."),
@@ -343,7 +345,7 @@ function resultsText(){
   if(org.ex.budget||org.ex.date)L.push([org.ex.budget&&`Spending limit: ${org.ex.budget}`,org.ex.date&&`Gift day: ${org.ex.date}`].filter(Boolean).join('   '),'');
   L.push('WHO IS BUYING FOR WHO');P.forEach(p=>L.push(`  ${p.name} is buying for ${pname(d.pairs[p.id],P)}`));L.push('');
   L.push('SECRET CODES');P.forEach(p=>L.push(`  ${p.name}: ${d.codes[p.id]}`));L.push('');
-  L.push('FAMILY LINK (safe to share with everyone)',`  ${baseURL()}#${d.group}`,'');
+  L.push('FAMILY LINK (safe to share with everyone)',`  ${baseURL()}?${d.group}`,'');
   const w=P.filter(p=>d.wl[p.id]);
   if(w.length){L.push('WISHLISTS');w.forEach(p=>{const x=d.wl[p.id].data;L.push(`  ${p.name}:`);(x.items||[]).forEach(i=>L.push(`    - ${i.t}${i.u?' ('+i.u+')':''}`));if(x.sizes)L.push(`    Sizes: ${x.sizes}`);if(x.favs)L.push(`    Likes: ${x.favs}`);if(x.no)L.push(`    Please no: ${x.no}`)});L.push('')}
   L.push('ORGANIZER BACKUP LINK (private: reopens the organizer page)',`  ${backupLink()}`,'',"Next year: on the setup page, tap \"Load last year's results file\" and pick this file so nobody gets the same person again.");
@@ -393,7 +395,7 @@ function vCode(g,e,frag){
 
 function vReveal(I){
   clear();
-  if(location.hash.slice(1)!==I.group)history.replaceState(null,'','#'+I.group);
+  if(currentFrag()!==I.group)history.replaceState(null,'',baseURL()+'?'+I.group);
   app.append(h('h1',{},`Hi ${I.me.name}`),h('p',{class:'sub'},I.ex));
   const rv=LS.get('gx3.revealed',{}),key=meKey(I);
   const nameEl=h('div',{class:'big center'},I.to.name);
@@ -438,7 +440,7 @@ function vEditor(I){
     const ts=Date.now(),ts36=ts.toString(36),aad=`w2|${I.d}|${I.me.id}|${ts36}`;
     const[iv,ct]=await seal(await aesRaw(b64u.dec(I.me.read)),clean,aad);
     const sig=await signWith(I.me.sk,I.me.pub,`${aad}|${iv}|${ct}`);
-    const link=`${baseURL()}#w=2.${I.d}.${I.me.id}.${ts36}.${iv}.${ct}.${sig}`;
+    const link=`${baseURL()}?w=2.${I.d}.${I.me.id}.${ts36}.${iv}.${ct}.${sig}`;
     const w=WL();w[key]={ts,data:clean,seen:null};LS.set('gx3.wl',w);
     vShared(I,link);
   }
@@ -503,7 +505,7 @@ async function vBackupLink(frag){
 }
 
 function route(){
-  const f=location.hash.slice(1);
+  const f=currentFrag();
   if(f.startsWith('g='))return vGroup(f);
   if(f.startsWith('w='))return vWishlistLink(f);
   if(f.startsWith('s='))return vSetupLink(f);

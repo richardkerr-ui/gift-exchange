@@ -15,7 +15,13 @@ GitHub Pages:
 
 Netlify Drop also works: drag this folder onto https://app.netlify.com/drop.
 
-The website only hands out the page. Everything private travels inside the links, after the `#`, and browsers never send that part to the website.
+Links carry their data after a `?` (iPhone Messages link previews drop anything after a `#`, so `#` links broke). That means the website host receives each link when it's opened:
+
+- **Family link and wishlist links:** the results inside are encrypted, so the host only sees scrambled data.
+- **Setup link:** names, phone numbers and couples are readable.
+- **Backup link:** everything, including who has who, is readable.
+
+The host here is GitHub Pages, which doesn't publish these requests, but keep the setup and backup links between the helper and the organizer.
 
 ## 2. Set it up (helper)
 
