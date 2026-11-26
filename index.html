@@ -233,8 +233,18 @@ async function reopen(text){const m=parseSaved(text);if(!m||(m.v!==3&&m.v!==4)||
 function vWelcome(){
   clear();
   app.append(h('h1',{},`Hi ${org.orgName||'there'}!`),h('p',{class:'sub'},`You're running the ${exName()} gift exchange.${org.helper?` ${org.helper} set it up for you.`:''} Check it over, then tap the green button at the bottom.`));
-  app.append(card(`Who's in (${org.people.length})`,null,h('div',{class:'list'},org.people.map(p=>h('div',{class:'item'},p.name)))));
-  const rules=[...org.apart.map(([a,b])=>`${pname(a)} and ${pname(b)} won't get each other`),...(org.lastYear.length?[`Nobody gets the same person as last year`]:[])];
+  /* organizer can take out people who can't come, and put them back, before drawing */
+  const rmSlot=h('div');org.removed=org.removed||[];
+  const removeP=p=>askInline(rmSlot,`Take ${p.name} out of the exchange? ${p.name} won't buy for anyone, and nobody will buy for ${p.name}.`,`Yes, take ${p.name} out`,()=>{
+    if(org.people.length<=3){rmSlot.replaceChildren(h('div',{class:'err'},'You need at least 3 people for an exchange.'));return}
+    org.removed.push({p});org.people=org.people.filter(x=>x.id!==p.id);
+    saveOrg();vWelcome();toast(`${p.name} is out`)});
+  const putBack=r=>{org.removed=org.removed.filter(x=>x!==r);org.people.push(r.p);saveOrg();vWelcome();toast(`${r.p.name} is back in`)};
+  app.append(card(`Who's in (${org.people.length})`,"Is someone not coming this year? Tap Remove next to their name.",
+    h('div',{class:'list'},org.people.map(p=>h('div',{class:'item'},h('span',{},p.name),h('button',{class:'icon',style:'color:var(--err)','aria-label':'Remove '+p.name,onclick:()=>removeP(p)},'Remove')))),rmSlot,
+    org.removed.length?[h('p',{style:'margin:14px 0 6px'},h('b',{},'Taken out')),h('div',{class:'list'},org.removed.map(r=>h('div',{class:'item'},h('span',{class:'muted'},r.p.name),h('button',{class:'icon',onclick:()=>putBack(r)},'Put back'))))]:null));
+  const isIn=id=>org.people.some(p=>p.id===id);
+  const rules=[...org.apart.filter(([a,b])=>isIn(a)&&isIn(b)).map(([a,b])=>`${pname(a)} and ${pname(b)} won't get each other`),...(org.lastYear.length?[`Nobody gets the same person as last year`]:[])];
   if(rules.length)app.append(card('Rules',null,h('div',{class:'list'},rules.map(r=>h('div',{class:'item'},r)))));
   if(org.ex.budget||org.ex.date)app.append(card('Details',null,org.ex.budget?h('p',{class:'kv'},h('b',{},'Spending limit: '),org.ex.budget):null,org.ex.date?h('p',{class:'kv'},h('b',{},'Gift day: '),org.ex.date):null));
   const err=h('div');
@@ -538,6 +548,8 @@ function vSetupLink(frag){
   if(!s||s.k!=='setup'||!Array.isArray(s.p))return vMsg('This link looks cut off','Ask for it to be sent again. Make sure you tap the whole link.');
   const hash=JSON.stringify(s);
   const goWelcome=()=>{applySetup(s);history.replaceState(null,'',baseURL());vWelcome()};
+  /* same link opened again before drawing: keep anything the organizer changed (like people taken out) */
+  if(!org.draw&&org.sid===s.sid&&org.setupHash===hash){history.replaceState(null,'',baseURL());return vWelcome()}
   if(!org.draw)return goWelcome();
   if(org.sid===s.sid&&org.setupHash===hash){history.replaceState(null,'',baseURL());return vHome()}
   clear();const slot=h('div');
