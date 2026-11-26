@@ -240,9 +240,26 @@ function vWelcome(){
     org.removed.push({p});org.people=org.people.filter(x=>x.id!==p.id);
     saveOrg();vWelcome();toast(`${p.name} is out`)});
   const putBack=r=>{org.removed=org.removed.filter(x=>x!==r);org.people.push(r.p);saveOrg();vWelcome();toast(`${r.p.name} is back in`)};
+  /* organizer can also add someone new before drawing */
+  const addName=h('input',{type:'text',placeholder:'Their name',maxlength:'40','aria-label':'New person name'});
+  const addPhone=h('input',{type:'tel',placeholder:'Phone, like +1 555 123 4567',maxlength:'25','aria-label':'New person phone'});
+  const addPartner=h('select',{'aria-label':'Their partner'},h('option',{value:''},'No partner in the exchange'),org.people.map(p=>h('option',{value:p.id},`${p.name} is their partner`)));
+  const addErr=h('div');
+  function addPerson(){addErr.replaceChildren();const n=addName.value.replace(/[​-‍﻿]/g,'').replace(/\s+/g,' ').trim();
+    if(!n){addErr.append(h('div',{class:'err'},'Type their name first.'));return}
+    if(org.people.some(p=>p.name.toLowerCase()===n.toLowerCase())){addErr.append(h('div',{class:'err'},`${n} is already on the list.`));return}
+    const back=org.removed.find(r=>r.p.name.toLowerCase()===n.toLowerCase());if(back){putBack(back);return}
+    const id=b64u.enc(rnd(6));org.people.push({id,name:n,phone:addPhone.value.trim()});
+    if(addPartner.value)org.apart.push([id,addPartner.value]);
+    saveOrg();vWelcome();toast(`${n} is in`)}
   app.append(card(`Who's in (${org.people.length})`,"Is someone not coming this year? Tap Remove next to their name.",
     h('div',{class:'list'},org.people.map(p=>h('div',{class:'item'},h('span',{},p.name),h('button',{class:'icon',style:'color:var(--err)','aria-label':'Remove '+p.name,onclick:()=>removeP(p)},'Remove')))),rmSlot,
-    org.removed.length?[h('p',{style:'margin:14px 0 6px'},h('b',{},'Taken out')),h('div',{class:'list'},org.removed.map(r=>h('div',{class:'item'},h('span',{class:'muted'},r.p.name),h('button',{class:'icon',onclick:()=>putBack(r)},'Put back'))))]:null));
+    org.removed.length?[h('p',{style:'margin:14px 0 6px'},h('b',{},'Taken out')),h('div',{class:'list'},org.removed.map(r=>h('div',{class:'item'},h('span',{class:'muted'},r.p.name),h('button',{class:'icon',onclick:()=>putBack(r)},'Put back'))))]:null,
+    h('details',{style:'margin-top:10px'},h('summary',{},'Someone new is coming? Add them'),h('div',{},
+      h('label',{class:'field'},h('span',{},'Name'),addName),
+      h('label',{class:'field'},h('span',{},'Phone (optional, with the + and country code)'),addPhone),
+      h('label',{class:'field'},h('span',{},"Is their partner in the exchange? They won't get each other."),addPartner),
+      h('button',{class:'wide',onclick:addPerson},'+ Add this person'),addErr))));
   const isIn=id=>org.people.some(p=>p.id===id);
   const rules=[...org.apart.filter(([a,b])=>isIn(a)&&isIn(b)).map(([a,b])=>`${pname(a)} and ${pname(b)} won't get each other`),...(org.lastYear.length?[`Nobody gets the same person as last year`]:[])];
   if(rules.length)app.append(card('Rules',null,h('div',{class:'list'},rules.map(r=>h('div',{class:'item'},r)))));
